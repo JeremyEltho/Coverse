@@ -1,0 +1,44 @@
+{
+  "name": "coverse-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "check:crdt": "node scripts/crdt-roundtrip.mjs",
+    "check:collab": "node scripts/collab-check.mjs",
+    "check:e2e": "node scripts/e2e-check.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "@tiptap/extension-collaboration": "^3.0.0",
+    "@tiptap/extension-collaboration-caret": "^3.31.3",
+    "@tiptap/extension-placeholder": "^3.0.0",
+    "@tiptap/pm": "^3.0.0",
+    "@tiptap/react": "^3.0.0",
+    "@tiptap/starter-kit": "^3.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.26.0",
+    "y-prosemirror": "^1.2.15",
+    "y-protocols": "^1.0.6",
+    "y-websocket": "^3.1.0",
+    "yjs": "^13.6.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "typescript": "^5.6.0",
+    "vite": "^5.4.0",
+    "vitest": "^2.1.0",
+    "playwright": "^1.63.0",
+    "ws": "^8.18.0",
+    "@types/ws": "^8.5.0"
+  }
+}
