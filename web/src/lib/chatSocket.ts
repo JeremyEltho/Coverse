@@ -6,6 +6,7 @@
  * socket as CRDT updates, which is what lets every connected client see the AI
  * write in real time rather than just the person who asked.
  */
+import { wsUrl } from './origin'
 import type { AiAction } from './types'
 
 export interface ServerEvent {
@@ -55,8 +56,9 @@ export class ChatSocket {
   private open(): void {
     if (this.closed) return
 
-    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const url = `${protocol}//${location.host}/ws/chat/${this.documentId}?token=${encodeURIComponent(this.token)}`
+    const url = wsUrl(
+      `/ws/chat/${this.documentId}?token=${encodeURIComponent(this.token)}`,
+    )
     const socket = new WebSocket(url)
     this.socket = socket
 
