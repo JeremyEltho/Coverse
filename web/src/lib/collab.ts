@@ -7,6 +7,7 @@
  */
 import * as Y from 'yjs'
 import { WebsocketProvider } from 'y-websocket'
+import { wsUrl } from './origin'
 import type { Peer, Suggestion } from './types'
 
 const PALETTE = ['#2563eb', '#059669', '#d97706', '#dc2626', '#7c3aed', '#0891b2', '#db2777']
@@ -24,15 +25,10 @@ export interface CollabSession {
   destroy: () => void
 }
 
-function socketBase(): string {
-  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
-  return `${protocol}//${location.host}`
-}
-
 export function connect(documentId: string, token: string, name: string): CollabSession {
   const doc = new Y.Doc()
 
-  const provider = new WebsocketProvider(`${socketBase()}/ws/doc`, documentId, doc, {
+  const provider = new WebsocketProvider(wsUrl('/ws/doc'), documentId, doc, {
     params: { token },
     // y-websocket reconnects with exponential backoff on its own.
     connect: true,
