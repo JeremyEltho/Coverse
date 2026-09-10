@@ -11,4 +11,7 @@ COPY coverse ./coverse
 RUN pip install --no-cache-dir .
 
 EXPOSE 8000
-CMD ["uvicorn", "coverse.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Shell form on purpose: hosted platforms assign a port at runtime through
+# $PORT, and the container has to bind whatever it is given rather than a
+# baked-in number. Falls back to 8000 for plain `docker run`.
+CMD uvicorn coverse.main:app --host 0.0.0.0 --port ${PORT:-8000}

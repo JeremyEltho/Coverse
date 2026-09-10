@@ -1,0 +1,21 @@
+# Railway deployment for the Coverse backend.
+#
+# Set the service's root directory to `server/` so this file and the Dockerfile
+# are found, and so the Docker build context matches the COPY paths.
+
+[build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 120
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
+
+# Must stay at 1. A room holds one live Yjs replica in process memory and talks
+# to its clients through websocket handles it owns; a second replica would give
+# two people editing the same document separate copies that never reconcile,
+# and both would write divergent updates to the same row. Horizontal scaling
+# requires moving the fan-out onto a shared bus first.
+numReplicas = 1
