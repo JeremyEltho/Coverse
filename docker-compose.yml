@@ -1,0 +1,47 @@
+# Runs the backend, optionally with a local Postgres instead of Supabase.
+#
+#   docker compose up backend            # backend only, SQLite, mock provider
+#   docker compose --profile db up       # backend + Postgres
+#
+# The frontend runs with `npm run dev` in web/ and proxies to the backend.
+
+services:
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    ports:
+      - '8000:8000'
+    environment:
+      AI_PROVIDER: ${AI_PROVIDER:-mock}
+      DATABASE_URL: ${DATABASE_URL:-sqlite+aiosqlite:///./coverse.db}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+      # Reaches an Ollama running on the host rather than in the container.
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET:-}
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    volumes:
+      - coverse-data:/app/data
+
+  postgres:
+    image: postgres:17-alpine
+    profiles: ['db']
+    environment:
+      POSTGRES_PASSWORD: coverse
+      POSTGRES_USER: coverse
+      POSTGRES_DB: coverse
+    ports:
+      - '5432:5432'
+    volumes:
+      - coverse-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U coverse']
+      interval: 5s
+      retries: 10
+
+volumes:
+  coverse-data:
+  coverse-pg:
