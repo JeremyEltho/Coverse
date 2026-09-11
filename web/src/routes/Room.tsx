@@ -47,7 +47,7 @@ function JoinForm({ code, onJoined }: { code: string; onJoined: (m: JoinResult) 
 
   return (
     <div className="landing">
-      <form className="landing-card" onSubmit={submit}>
+      <form className="landing-card glass glass-strong" onSubmit={submit}>
         <h1>Join {code}</h1>
         <label>
           Your name
@@ -97,7 +97,7 @@ function RoomInterior({ code, member }: { code: string; member: JoinResult }) {
   if (room.ended) {
     return (
       <div className="landing">
-        <div className="landing-card">
+        <div className="landing-card glass glass-strong">
           <h1>{room.ended === 'room-gone' ? 'This room has ended' : 'You are not in this room'}</h1>
           <p className="muted">
             {room.ended === 'room-gone'
@@ -140,7 +140,7 @@ function RoomInterior({ code, member }: { code: string; member: JoinResult }) {
 
   return (
     <div className="page">
-      <header className="app-header">
+      <header className="app-header glass">
         <div className="app-header-left">
           <span className="brand">Coverse</span>
           <button type="button" className="room-code" onClick={copyLink} title="Copy the link">

@@ -25,7 +25,7 @@ interface RailProps {
 }
 
 const TABS: { id: RailTab; label: string }[] = [
-  { id: 'chat', label: 'Side chat' },
+  { id: 'chat', label: 'Chat' },
   { id: 'queue', label: 'Queue' },
   { id: 'pins', label: 'Pins' },
   { id: 'fork', label: 'Just me' },
@@ -42,7 +42,7 @@ export function Rail(props: RailProps) {
   }
 
   return (
-    <aside className="rail">
+    <aside className="rail glass">
       <nav className="rail-tabs" role="tablist">
         {TABS.map((entry) => (
           <button

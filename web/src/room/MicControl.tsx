@@ -21,7 +21,7 @@ export function MicControl({
   onRelease,
 }: MicControlProps) {
   return (
-    <div className="mic">
+    <div className="mic glass">
       <div className="mic-presence">
         <span className={`dot ${connected ? 'is-online' : 'is-offline'}`} />
         <div className="avatars">
@@ -37,7 +37,15 @@ export function MicControl({
           ))}
         </div>
         <span className="mic-driver">
-          {isDriver ? 'You have the mic' : `${driverName ?? 'Nobody'} has the mic`}
+          {isDriver ? (
+            <>
+              <strong>You</strong> have the mic
+            </>
+          ) : (
+            <>
+              <strong>{driverName ?? 'Nobody'}</strong> has the mic
+            </>
+          )}
         </span>
         {isDriver ? (
           <button type="button" className="ghost" onClick={onRelease}>

@@ -5,6 +5,10 @@ import { Room } from './routes/Room'
 export default function App() {
   return (
     <BrowserRouter>
+      {/* The light the glass sits on. One instance, behind every route. */}
+      <div className="backdrop" aria-hidden="true">
+        <span />
+      </div>
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/r/:code" element={<Room />} />

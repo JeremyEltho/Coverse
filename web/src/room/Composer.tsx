@@ -40,48 +40,54 @@ export function Composer({
 
   return (
     <div className="composer">
-      <textarea
-        ref={ref}
-        value={value}
-        onChange={(event) => onInput(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' && !event.shiftKey) {
-            event.preventDefault()
-            submit()
+      <div className="composer-shell glass glass-strong">
+        <textarea
+          ref={ref}
+          value={value}
+          onChange={(event) => onInput(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+              event.preventDefault()
+              submit()
+            }
+          }}
+          rows={2}
+          placeholder={
+            isDriver
+              ? 'Ask the assistant…'
+              : `Type here for ${driverName ?? 'the driver'} to send…`
           }
-        }}
-        rows={3}
-        placeholder={
-          isDriver
-            ? 'Ask the assistant. Everyone can edit this box, only you can send.'
-            : `Anyone can type here. ${driverName ?? 'The driver'} sends it.`
-        }
-      />
+        />
 
-      <div className="composer-actions">
-        <span className="composer-hint">
-          {isDriver
-            ? 'You have the mic'
-            : `${driverName ?? 'Someone else'} has the mic`}
-        </span>
+        <div className="composer-actions">
+          <span className="composer-hint">
+            {isDriver ? (
+              'Everyone can edit this. Only you can send.'
+            ) : (
+              <>
+                <strong>{driverName ?? 'Someone else'}</strong> sends this
+              </>
+            )}
+          </span>
 
-        {streaming ? (
-          <button type="button" className="secondary" onClick={onStop}>
-            Stop
-          </button>
-        ) : isDriver ? (
-          <button type="button" onClick={submit} disabled={!value.trim()}>
-            Send
-          </button>
-        ) : requestPending ? (
-          <button type="button" className="secondary" onClick={onWithdraw}>
-            Cancel request
-          </button>
-        ) : (
-          <button type="button" className="secondary" onClick={onRequestMic}>
-            Ask for the mic
-          </button>
-        )}
+          {streaming ? (
+            <button type="button" className="secondary" onClick={onStop}>
+              Stop
+            </button>
+          ) : isDriver ? (
+            <button type="button" onClick={submit} disabled={!value.trim()}>
+              Send
+            </button>
+          ) : requestPending ? (
+            <button type="button" className="secondary" onClick={onWithdraw}>
+              Cancel request
+            </button>
+          ) : (
+            <button type="button" className="secondary" onClick={onRequestMic}>
+              Ask for the mic
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )

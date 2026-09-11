@@ -69,9 +69,9 @@ const avatars = await alice.page.locator('.avatar').count()
 check('all four people appear in the room', avatars >= 4, `${avatars} avatars`)
 
 check('the room creator holds the mic',
-  (await alice.page.locator('.composer-hint').textContent()).includes('You have the mic'))
+  (await alice.page.locator('.mic-driver').textContent()).includes('You have the mic'))
 check('everyone else is told who has it',
-  (await bob.page.locator('.composer-hint').textContent()).includes('Alice'))
+  (await bob.page.locator('.mic-driver').textContent()).includes('Alice'))
 
 // A spectator has no send button.
 check('spectators cannot send',
@@ -103,10 +103,10 @@ check('assistant markdown renders as real elements, not raw syntax',
 await alice.page.screenshot({ path: '/tmp/coverse-room.png' })
 
 // Side chat is for humans only.
-await cy.page.click('.rail-tabs button:has-text("Side chat")')
+await cy.page.click('.rail-tabs button:has-text("Chat")')
 await cy.page.fill('.panel-composer input', 'SECRETLINE this direction is weak')
 await cy.page.press('.panel-composer input', 'Enter')
-await bob.page.click('.rail-tabs button:has-text("Side chat")')
+await bob.page.click('.rail-tabs button:has-text("Chat")')
 await bob.page.waitForSelector('.side-line', { timeout: 10000 })
 check('side chat reaches the other humans', true)
 check('side chat never enters the AI thread',
@@ -135,7 +135,7 @@ check('a mic request shows up for the driver', true)
 
 await alice.page.click('.mic-request button:has-text("Hand over")')
 await bob.page.waitForFunction(
-  () => document.querySelector('.composer-hint')?.textContent?.includes('You have the mic'),
+  () => document.querySelector('.mic-driver')?.textContent?.includes('You have the mic'),
   { timeout: 10000 },
 )
 check('granting the mic moves it', true)
@@ -143,7 +143,7 @@ check('the shared draft survives the handoff',
   (await bob.page.locator('.composer textarea').inputValue()).includes('half typed thought'))
 const aliceDemoted = await alice.page
   .waitForFunction(
-    () => !document.querySelector('.composer-hint')?.textContent?.includes('You have the mic'),
+    () => !document.querySelector('.mic-driver')?.textContent?.includes('You have the mic'),
     { timeout: 10000 },
   )
   .then(() => true)
@@ -245,10 +245,10 @@ const overflow = await phone.evaluate(
 check('no horizontal overflow on a phone', overflow <= 0, `${overflow}px`)
 check('a phone can read the thread', (await phone.locator('.turn').count()) > 0)
 
-await phone.click('.rail-tabs button:has-text("Side chat")')
+await phone.click('.rail-tabs button:has-text("Chat")')
 await phone.fill('.panel-composer input', 'watching from my phone')
 await phone.press('.panel-composer input', 'Enter')
-await bob.page.click('.rail-tabs button:has-text("Side chat")')
+await bob.page.click('.rail-tabs button:has-text("Chat")')
 await bob.page.waitForFunction(
   () => document.body.textContent?.includes('watching from my phone'),
   { timeout: 10000 },

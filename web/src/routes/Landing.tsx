@@ -32,7 +32,7 @@ export function Landing() {
 
   return (
     <div className="landing">
-      <div className="landing-card">
+      <div className="landing-card glass glass-strong">
         <h1>Coverse</h1>
         <p className="muted">
           One assistant, several people. Whoever holds the mic talks to it, everyone
@@ -68,7 +68,7 @@ export function Landing() {
           <input
             value={code}
             onChange={(event) => setCode(event.target.value.toUpperCase())}
-            placeholder="Or enter a room code"
+            placeholder="Room code"
             maxLength={6}
             autoCapitalize="characters"
           />
