@@ -1,137 +1,140 @@
-"""Rooms: sync protocol handling, broadcast, and persistence."""
+"""Room membership, the mic, and the graces that keep it usable."""
 
 from __future__ import annotations
 
 import asyncio
 
-from pycrdt import Doc, XmlElement, XmlFragment, XmlText, create_sync_message, handle_sync_message
+import pytest
 
-from coverse.db import repo
-from coverse.db.session import init_db, session_scope
-from coverse.ws.rooms import Client, Room, RoomManager
+from coverse.ws.rooms import Room, RoomRegistry, generate_code
 
 
-class FakeSocket:
-    def __init__(self) -> None:
-        self.sent: list[bytes] = []
-
-    async def send(self, message: bytes) -> None:
-        self.sent.append(message)
+def _member(room: Room, name: str):
+    member = room.add_member(name, "#000")
+    room.connect(member.id)
+    return member
 
 
-def _client_doc_with_text(text: str) -> Doc:
-    doc = Doc()
-    doc["default"] = fragment = XmlFragment()
-    with doc.transaction():
-        fragment.children.append(XmlElement("paragraph", None, [XmlText(text)]))
-    return doc
+def test_the_first_person_in_gets_the_mic():
+    room = Room("TEST01")
+    alice = _member(room, "Alice")
+    bob = _member(room, "Bob")
+
+    assert room.is_driver(alice.id)
+    assert not room.is_driver(bob.id)
+    assert room.state.driver_name == "Alice"
 
 
-async def test_a_joining_client_is_sent_sync_step1():
-    room = Room("doc-1")
-    socket = FakeSocket()
-    await room.add_client(Client("c1", socket.send, "u1", "Alice"))
+def test_only_the_driver_can_pass_the_mic():
+    room = Room("TEST02")
+    alice = _member(room, "Alice")
+    bob = _member(room, "Bob")
+    cy = _member(room, "Cy")
 
-    assert socket.sent, "the server must open the sync handshake"
-    assert socket.sent[0][0] == 0  # YMessageType.SYNC
-    await room.close()
+    assert room.grant_mic(bob.id, cy.id) is False, "a spectator cannot hand out the mic"
+    assert room.is_driver(alice.id)
 
-
-async def test_an_update_from_one_client_reaches_the_other_but_not_its_sender():
-    room = Room("doc-2")
-    alice, bob = FakeSocket(), FakeSocket()
-    await room.add_client(Client("alice", alice.send, "u1", "Alice"))
-    await room.add_client(Client("bob", bob.send, "u2", "Bob"))
-    alice.sent.clear()
-    bob.sent.clear()
-
-    client_doc = _client_doc_with_text("hello from alice")
-    # Sync step 1 from the client, then the resulting update.
-    await room.handle_message("alice", create_sync_message(client_doc))
-    reply = alice.sent[-1] if alice.sent else None
-    assert reply is not None
-    handle_sync_message(reply[1:], client_doc)
-    await room.handle_message("alice", _update_message(client_doc))
-
-    await asyncio.sleep(0.05)  # broadcast is dispatched onto the loop
-
-    assert "hello from alice" in room.doc.to_xml()
-    assert bob.sent, "the other client must receive the update"
-    await room.close()
+    assert room.grant_mic(alice.id, bob.id) is True
+    assert room.is_driver(bob.id)
+    assert room.state.driver_name == "Bob"
 
 
-def _update_message(doc: Doc) -> bytes:
-    from pycrdt import create_update_message
+def test_releasing_the_mic_passes_it_to_the_longest_present_member():
+    room = Room("TEST03")
+    alice = _member(room, "Alice")
+    bob = _member(room, "Bob")
 
-    return create_update_message(doc.get_update())
-
-
-async def test_room_persists_and_reloads_a_document():
-    await init_db()
-    async with session_scope() as session:
-        document = await repo.create_document(session, owner_id="u1", title="T")
-        document_id = document.id
-
-    room = Room(document_id)
-    await room.load()
-    room.doc.append_block("paragraph", "persist me")
-    await room.flush()
-    await room.close()
-
-    reloaded = Room(document_id)
-    await reloaded.load()
-    assert "persist me" in reloaded.doc.to_markdown()
-    await reloaded.close()
+    room.grant_mic(alice.id, bob.id)
+    assert room.release_mic(bob.id) is True
+    assert room.is_driver(alice.id)
 
 
-async def test_ai_presence_is_broadcast_to_clients():
-    room = Room("doc-3")
-    socket = FakeSocket()
-    await room.add_client(Client("c1", socket.send, "u1", "Alice"))
-    socket.sent.clear()
-
-    await room.set_ai_presence(True)
-    assert any(message[0] == 1 for message in socket.sent), "expected an awareness message"
-    await room.close()
+def test_a_password_gates_joining():
+    room = Room("TEST04", password="hunter2")
+    assert room.needs_password
+    assert room.check_password("hunter2")
+    assert not room.check_password("wrong")
+    assert not room.check_password("")
 
 
-async def test_room_manager_releases_a_room_once_empty():
-    manager = RoomManager()
-    room = await manager.get("doc-4")
-    await room.add_client(Client("c1", FakeSocket().send, "u1", "A"))
-
-    await manager.release("doc-4")
-    assert manager.peek("doc-4") is room, "a room with clients must stay alive"
-
-    await room.remove_client("c1")
-    await manager.release("doc-4")
-    assert manager.peek("doc-4") is None
-    await manager.close_all()
+def test_no_password_lets_anyone_in():
+    room = Room("TEST05")
+    assert not room.needs_password
+    assert room.check_password("")
 
 
-async def test_joining_by_link_records_the_visitor_as_a_collaborator():
-    """Opening a shared link should add you to the document, not bounce you."""
-    await init_db()
-    async with session_scope() as session:
-        document = await repo.create_document(session, owner_id="owner", title="Shared")
-        document_id = document.id
+def test_presence_counts_connections_so_a_second_tab_does_not_look_like_leaving():
+    room = Room("TEST06")
+    alice = _member(room, "Alice")
+    room.connect(alice.id)  # a second socket for the same person
 
-    async with session_scope() as session:
-        assert await repo.join_via_link(session, document_id, "visitor") is True
+    room.disconnect(alice.id)
+    assert alice.online, "one socket closing must not empty the room"
 
-    async with session_scope() as session:
-        assert await repo.user_can_access(session, document_id, "visitor") is True
-        visible = await repo.list_documents(session, "visitor")
-        assert [d.id for d in visible] == [document_id]
+    room.disconnect(alice.id)
+    assert not alice.online
+    assert room.is_empty
 
 
-async def test_a_restricted_document_refuses_link_visitors():
-    await init_db()
-    async with session_scope() as session:
-        document = await repo.create_document(session, owner_id="owner", title="Private")
-        document.link_access = "none"
-        document_id = document.id
+async def test_an_absent_driver_loses_the_mic_after_the_grace_period(monkeypatch):
+    """One dropped laptop must not block the room forever."""
+    from coverse import config
 
-    async with session_scope() as session:
-        assert await repo.join_via_link(session, document_id, "visitor") is False
-        assert await repo.user_can_access(session, document_id, "visitor") is False
+    config.get_settings.cache_clear()
+    monkeypatch.setenv("DRIVER_GRACE_SECONDS", "0.05")
+    config.get_settings.cache_clear()
+
+    room = Room("TEST07")
+    alice = _member(room, "Alice")
+    bob = _member(room, "Bob")
+    assert room.is_driver(alice.id)
+
+    room.disconnect(alice.id)
+    await asyncio.sleep(0.2)
+
+    assert room.is_driver(bob.id), "the mic should have moved to the remaining member"
+
+
+async def test_a_driver_who_reconnects_in_time_keeps_the_mic(monkeypatch):
+    from coverse import config
+
+    config.get_settings.cache_clear()
+    monkeypatch.setenv("DRIVER_GRACE_SECONDS", "0.3")
+    config.get_settings.cache_clear()
+
+    room = Room("TEST08")
+    alice = _member(room, "Alice")
+    _member(room, "Bob")
+
+    room.disconnect(alice.id)
+    room.connect(alice.id)  # a refresh, not a departure
+    await asyncio.sleep(0.5)
+
+    assert room.is_driver(alice.id)
+
+
+def test_room_codes_avoid_ambiguous_characters():
+    """The code gets read aloud across a table, so 0/O and 1/I are out."""
+    codes = "".join(generate_code() for _ in range(200))
+    assert not set(codes) & set("O0I1L")
+
+
+async def test_the_registry_creates_unique_rooms_and_closes_them():
+    registry = RoomRegistry()
+    first = await registry.create()
+    second = await registry.create()
+
+    assert first.code != second.code
+    assert registry.get(first.code.lower()) is first, "codes are case insensitive"
+    assert registry.exists(first.code)
+
+    await registry.close_all()
+    assert registry.get(first.code) is None
+
+
+@pytest.mark.parametrize("password", ["", "secret"])
+async def test_registry_rooms_carry_their_password(password: str):
+    registry = RoomRegistry()
+    room = await registry.create(password)
+    assert room.needs_password is bool(password)
+    await registry.close_all()
