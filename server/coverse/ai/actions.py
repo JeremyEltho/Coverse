@@ -1,16 +1,14 @@
-"""Orchestration: run a model, turn its output into document changes.
+"""Running the model and putting its reply into the room.
 
-Each action is an async generator of JSON-serializable events for the chat/control
-socket. Document mutations happen as a side effect, on the server's live CRDT
-replica, and reach clients through the sync socket instead of through these events.
+Two actions, because the room only has two shapes of question: one everybody
+sees, and one only the asker sees.
 
-Two things every action gets right:
+`reply` streams into a message body that already exists in the shared document,
+so every member watches it fill in through ordinary CRDT sync. There is no
+separate broadcast path for AI output.
 
-* **Batching.** Committing one CRDT transaction per token is a write storm, so
-  deltas accumulate and flush on a timer or at a sentence boundary.
-* **Cancellation.** Each action runs as an `asyncio.Task`; cancelling it leaves
-  already-committed text in place rather than trying to roll back, which is what
-  a human collaborator being interrupted mid-sentence would look like.
+`fork_reply` answers one person privately. It never touches shared state, so its
+deltas go back over that person's control socket instead.
 """
 
 from __future__ import annotations
@@ -19,19 +17,21 @@ import time
 from collections.abc import AsyncIterator
 from typing import Any
 
-from ..crdt import suggestions as suggestion_store
-from ..crdt.document import CoverseDoc
-from ..crdt.edits import StreamTarget, rewrite_document
-from ..crdt.positions import TextAnchor
+from ..crdt.room import RoomDoc
 from . import prompts
-from .base import Delta, Message, Provider, ProviderError
+from .base import Message, Provider
 
 # Flush a batch when the buffer ends a sentence, so readers see whole thoughts.
 _SENTENCE_ENDINGS = (". ", ".\n", "! ", "? ", ":\n", "\n\n")
 
 
 class DeltaBatcher:
-    """Accumulates streamed text and decides when it is worth a CRDT commit."""
+    """Accumulates streamed text and decides when it is worth a CRDT commit.
+
+    One transaction per token would be a write storm against every connected
+    client. Batching on a short timer, or at a sentence boundary, keeps it
+    looking live while cutting the update count by roughly an order of magnitude.
+    """
 
     def __init__(self, flush_ms: int = 50) -> None:
         self.flush_seconds = max(flush_ms, 0) / 1000
@@ -58,25 +58,36 @@ class DeltaBatcher:
         return joined
 
 
-async def generate(
+async def reply(
     *,
     provider: Provider,
-    doc: CoverseDoc,
-    instruction: str,
-    author: str,
+    room: RoomDoc,
     flush_ms: int = 50,
+    roster: list[str] | None = None,
     **opts: Any,
 ) -> AsyncIterator[dict[str, Any]]:
-    """Stream new content directly into the document, visible live to everyone."""
-    messages = [
-        Message("system", prompts.GENERATE),
-        Message("user", prompts.with_document_context(instruction, doc.to_markdown())),
-    ]
+    """Answer the thread, streaming into the shared document.
 
-    target = StreamTarget.append_to(doc)
+    The assistant message is appended first and filled in as tokens arrive, so
+    everyone sees an empty bubble appear and then fill, and anyone joining mid
+    reply syncs into the correct partial state.
+    """
+    transcript = room.transcript()
+    messages = prompts.build(transcript)
+    if roster:
+        messages.insert(1, Message("system", prompts.roster_line(roster)))
+
+    message_id, entry = room.add_message(
+        role="assistant", author="assistant", author_name="Assistant"
+    )
+    body = room.message_body(entry)
     batcher = DeltaBatcher(flush_ms)
-    opts.setdefault("action", "generate")
-    yield {"type": "status", "status": "streaming", "action": "generate"}
+
+    yield {"type": "status", "status": "streaming", "message": message_id}
+
+    def commit(chunk: str) -> None:
+        with room.doc.transaction():
+            body.insert(len(str(body)), chunk)
 
     try:
         async for delta in provider.stream(messages, **opts):
@@ -84,132 +95,35 @@ async def generate(
                 break
             chunk = batcher.add(delta.text)
             if chunk:
-                target.append(chunk)
-                yield {"type": "delta", "text": chunk}
+                commit(chunk)
         remaining = batcher.flush()
         if remaining:
-            target.append(remaining)
-            yield {"type": "delta", "text": remaining}
+            commit(remaining)
     finally:
-        # Runs on cancellation too, so a half-written block is still tidy.
-        target.finish()
+        # Runs on cancellation too: a stopped reply keeps whatever it had
+        # written and is marked finished rather than left spinning forever.
+        room.finish_message(entry)
 
-    yield {"type": "done", "action": "generate", "written": target.written}
+    yield {"type": "done", "message": message_id}
 
 
-async def rewrite(
+async def fork_reply(
     *,
     provider: Provider,
-    doc: CoverseDoc,
-    selection: str,
-    instruction: str,
-    author: str,
-    relpos: dict[str, str] | None = None,
-    anchor: dict[str, Any] | None = None,
-    **opts: Any,
-) -> AsyncIterator[dict[str, Any]]:
-    """Propose a replacement for a selected passage, as a pending suggestion.
-
-    Nothing in the document body changes here. The suggestion lands in the shared
-    suggestions Map, every client sees it, and a human accepts or rejects it.
-    """
-    messages = [
-        Message("system", prompts.REWRITE),
-        Message("user", prompts.rewrite_prompt(selection, instruction)),
-    ]
-
-    opts.setdefault("action", "rewrite")
-    yield {"type": "status", "status": "streaming", "action": "rewrite"}
-
-    parts: list[str] = []
-    async for delta in provider.stream(messages, **opts):
-        if delta.done:
-            break
-        parts.append(delta.text)
-        yield {"type": "delta", "text": delta.text}
-
-    replacement = "".join(parts).strip()
-    if not replacement:
-        raise ProviderError("model returned an empty rewrite")
-
-    suggestion_id = suggestion_store.create(
-        doc.suggestions,
-        kind="rewrite",
-        original=selection,
-        replacement=replacement,
-        author=author,
-        relpos=relpos,
-        anchor=anchor or TextAnchor(text=selection, offset=0).to_json(),
-    )
-
-    yield {
-        "type": "suggestion",
-        "action": "rewrite",
-        "id": suggestion_id,
-        "replacement": replacement,
-    }
-    yield {"type": "done", "action": "rewrite", "id": suggestion_id}
-
-
-async def comment(
-    *,
-    provider: Provider,
-    doc: CoverseDoc,
-    selection: str,
-    author: str,
-    relpos: dict[str, str] | None = None,
-    anchor: dict[str, Any] | None = None,
-    **opts: Any,
-) -> AsyncIterator[dict[str, Any]]:
-    """Leave a margin note on a passage. Never edits the document."""
-    messages = [
-        Message("system", prompts.COMMENT),
-        Message("user", prompts.comment_prompt(selection, doc.to_markdown())),
-    ]
-
-    opts.setdefault("action", "comment")
-    yield {"type": "status", "status": "streaming", "action": "comment"}
-
-    parts: list[str] = []
-    async for delta in provider.stream(messages, **opts):
-        if delta.done:
-            break
-        parts.append(delta.text)
-        yield {"type": "delta", "text": delta.text}
-
-    body = "".join(parts).strip()
-    if not body:
-        raise ProviderError("model returned an empty comment")
-
-    suggestion_id = suggestion_store.create(
-        doc.suggestions,
-        kind="comment",
-        original=selection,
-        body=body,
-        author=author,
-        relpos=relpos,
-        anchor=anchor or TextAnchor(text=selection, offset=0).to_json(),
-    )
-
-    yield {"type": "suggestion", "action": "comment", "id": suggestion_id, "body": body}
-    yield {"type": "done", "action": "comment", "id": suggestion_id}
-
-
-async def ask(
-    *,
-    provider: Provider,
-    doc: CoverseDoc,
+    room: RoomDoc,
     question: str,
-    history: list[Message] | None = None,
+    asker_name: str,
+    history: list[dict[str, str]] | None = None,
     **opts: Any,
 ) -> AsyncIterator[dict[str, Any]]:
-    """Answer a question about the document. Streams to chat only, no edits."""
-    messages: list[Message] = [Message("system", prompts.ASK)]
-    messages.extend(history or [])
-    messages.append(Message("user", prompts.with_document_context(question, doc.to_markdown())))
+    """Answer one person privately, with the room's thread as context."""
+    transcript = list(room.transcript())
+    transcript.extend(history or [])
+    transcript.append({"role": "user", "author_name": asker_name, "body": question})
 
-    opts.setdefault("action", "ask")
-    yield {"type": "status", "status": "streaming", "action": "ask"}
+    messages = prompts.build(transcript, fork=True)
+
+    yield {"type": "status", "status": "streaming"}
 
     parts: list[str] = []
     async for delta in provider.stream(messages, **opts):
@@ -218,49 +132,9 @@ async def ask(
         parts.append(delta.text)
         yield {"type": "delta", "text": delta.text}
 
-    yield {"type": "done", "action": "ask", "answer": "".join(parts).strip()}
-
-
-async def canvas(
-    *,
-    provider: Provider,
-    doc: CoverseDoc,
-    instruction: str,
-    history: list[Message] | None = None,
-    flush_ms: int = 50,
-    **opts: Any,
-) -> AsyncIterator[dict[str, Any]]:
-    """Canvas mode: rebuild the document from the conversation.
-
-    The model returns the whole document, so the result is buffered and applied as
-    one transaction at the end -- streaming a full-document rewrite into the CRDT
-    would make the doc flicker through every intermediate state for every viewer.
-    The tokens still stream to the chat pane so it feels live.
-    """
-    messages: list[Message] = [Message("system", prompts.CANVAS)]
-    messages.extend(history or [])
-    messages.append(Message("user", prompts.with_document_context(instruction, doc.to_markdown())))
-
-    opts.setdefault("action", "canvas")
-    yield {"type": "status", "status": "streaming", "action": "canvas"}
-
-    parts: list[str] = []
-    async for delta in provider.stream(messages, **opts):
-        if delta.done:
-            break
-        parts.append(delta.text)
-        yield {"type": "delta", "text": delta.text}
-
-    markdown = "".join(parts).strip()
-    if markdown:
-        rewrite_document(doc, markdown)
-
-    yield {"type": "done", "action": "canvas", "length": len(markdown)}
+    yield {"type": "done", "answer": "".join(parts).strip()}
 
 
 async def collect(stream: AsyncIterator[dict[str, Any]]) -> list[dict[str, Any]]:
     """Drain an action stream. Used by tests."""
     return [event async for event in stream]
-
-
-__all__ = ["generate", "rewrite", "comment", "ask", "canvas", "DeltaBatcher", "Delta", "collect"]

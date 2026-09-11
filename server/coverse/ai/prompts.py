@@ -1,62 +1,67 @@
-"""System prompts, one per action.
+"""Prompt construction for a room with several people in it.
 
-Kept together so the model's behaviour in each mode is easy to read and tune.
+The model is talking to a group, not a person. Two things follow:
+
+* Every turn is labelled with who said it, so the model can tell that two people
+  are disagreeing, build on what a specific person suggested, and address people
+  by name. A merged single voice would flatten exactly the part of a group
+  conversation that is interesting.
+* The side chat is never included. It is the backchannel where people say "this
+  is a dead end, ask it about X instead", and it only reaches the model when
+  somebody deliberately promotes a line into the thread.
 """
 
 from __future__ import annotations
 
-MAX_CONTEXT_CHARS = 12_000
+from .base import Message
 
-GENERATE = """You are a writing collaborator embedded in a shared document.
-Write content that belongs in the document itself: no preamble, no "Sure, here's",
-no meta-commentary about what you are doing. Output markdown using only headings,
-paragraphs, bullet and numbered lists, blockquotes and fenced code blocks.
-Match the voice and formatting of the surrounding document."""
+SYSTEM = """You are an assistant in a shared room with several people in it.
+Messages are labelled with who wrote them. Different people may want different
+things; when they disagree, address the disagreement rather than silently
+picking a side. Refer to people by name when it helps. Reply to the most recent
+message, taking the earlier conversation into account.
 
-REWRITE = """You rewrite a passage a user has selected in a shared document.
-Return only the rewritten passage. Do not add quotation marks, explanations, or
-alternatives. Preserve the original meaning and approximate length unless the
-instruction says otherwise. Plain prose only, no markdown block syntax."""
+Answer normally and directly. Do not narrate the fact that you are in a group."""
 
-COMMENT = """You are reviewing a passage in a shared document, the way a sharp
-editor leaves a margin note. Give one specific, actionable observation in at most
-three sentences. Address the writing, not the author. If the passage is genuinely
-fine, say so briefly rather than inventing a problem."""
+FORK_NOTE = """This is a private side question from one person in the room. The
+conversation above is the room's shared thread, for context. Your answer is shown
+only to the person asking unless they choose to share it."""
 
-ASK = """You answer questions about a shared document. Ground every answer in the
-document's actual content. If the document does not contain the answer, say so
-plainly instead of speculating. Be concise."""
-
-CANVAS = """You maintain a document that a user is building through conversation.
-Given the conversation and the document's current state, produce the full updated
-document in markdown. Output only the document. Preserve any parts the user has
-not asked you to change."""
+# Keep the labelled transcript bounded. Rooms are short lived, so this is a
+# safety valve rather than something a normal session will hit.
+MAX_TURNS = 60
 
 
-def with_document_context(prompt: str, document_markdown: str) -> str:
-    """Attach document state to a prompt, truncating from the middle if huge.
+def _label(turn: dict[str, str]) -> Message:
+    """One transcript turn as a provider message.
 
-    Middle-truncation keeps the opening (which sets the topic) and the ending
-    (which is usually where the user is working).
+    Human turns become user messages prefixed with the speaker's name. The
+    model's own turns stay unlabelled assistant messages, which is what the
+    chat APIs expect.
     """
-    if not document_markdown.strip():
-        return f"{prompt}\n\nThe document is currently empty."
-
-    body = document_markdown
-    if len(body) > MAX_CONTEXT_CHARS:
-        head = body[: MAX_CONTEXT_CHARS // 2]
-        tail = body[-MAX_CONTEXT_CHARS // 2 :]
-        body = f"{head}\n\n[... document truncated ...]\n\n{tail}"
-
-    return f'{prompt}\n\nCurrent document:\n\n"""\n{body}\n"""'
+    if turn["role"] == "assistant":
+        return Message("assistant", turn["body"])
+    name = turn.get("author_name") or "Someone"
+    return Message("user", f"{name}: {turn['body']}")
 
 
-def rewrite_prompt(selection: str, instruction: str) -> str:
-    task = instruction.strip() or "Improve the clarity and flow of this passage."
-    return f'{task}\n\nPassage to rewrite:\n\n"""\n{selection}\n"""'
+def build(transcript: list[dict[str, str]], *, fork: bool = False) -> list[Message]:
+    """Turn a room transcript into provider messages."""
+    system = SYSTEM if not fork else f"{SYSTEM}\n\n{FORK_NOTE}"
+    messages: list[Message] = [Message("system", system)]
+
+    for turn in transcript[-MAX_TURNS:]:
+        if not turn.get("body", "").strip():
+            continue  # skip the empty assistant placeholder being streamed into
+        messages.append(_label(turn))
+
+    return messages
 
 
-def comment_prompt(selection: str, document_markdown: str) -> str:
-    return with_document_context(
-        f'Review this passage:\n\n"""\n{selection}\n"""', document_markdown
-    )
+def roster_line(names: list[str]) -> str:
+    """A system note naming who is currently in the room."""
+    if not names:
+        return "The room is empty."
+    if len(names) == 1:
+        return f"{names[0]} is in the room."
+    return f"In the room: {', '.join(names[:-1])} and {names[-1]}."
