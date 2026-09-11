@@ -1,40 +1,54 @@
-export type DocumentMode = 'doc' | 'canvas'
-
-export interface DocumentSummary {
+export interface Member {
   id: string
-  title: string
-  mode: DocumentMode
-  owner_id: string
-  created_at: string
-  updated_at: string
+  name: string
+  color: string
 }
 
-export interface ChatTurn {
+export interface MicRequest {
   id: string
+  name: string
+  at: number
+}
+
+export interface ThreadMessage {
+  id: string
+  role: 'user' | 'assistant' | 'system'
+  author: string
+  authorName: string
+  body: string
+  at: number
+  done: boolean
+  reactions: Record<string, string[]>
+}
+
+export interface SideMessage {
+  id: string
+  author: string
+  author_name: string
+  body: string
+  at: number
+}
+
+export interface QueueItem {
+  id: string
+  author: string
+  author_name: string
+  body: string
+  at: number
+}
+
+export interface ForkTurn {
   role: 'user' | 'assistant'
   content: string
   streaming?: boolean
-  error?: boolean
-}
-
-export type AiAction = 'generate' | 'canvas' | 'ask' | 'rewrite' | 'comment'
-
-export interface Suggestion {
-  id: string
-  kind: 'rewrite' | 'comment'
-  status: 'pending' | 'accepted' | 'rejected'
-  original: string
-  replacement?: string
-  body?: string
-  author: string
-  created_at: number
-  relpos?: { from: string; to: string }
-  anchor?: { text: string; offset: number }
 }
 
 export interface Peer {
   clientId: number
+  memberId?: string
   name: string
   color: string
   isAI?: boolean
 }
+
+export type RailTab = 'chat' | 'queue' | 'pins' | 'fork'

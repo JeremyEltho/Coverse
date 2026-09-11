@@ -1,55 +1,73 @@
 import { apiUrl } from './origin'
-import type { DocumentMode, DocumentSummary, Suggestion } from './types'
+import type { Member } from './types'
 
-async function request<T>(path: string, token: string, init: RequestInit = {}): Promise<T> {
+async function request<T>(path: string, body?: unknown): Promise<T> {
   const response = await fetch(apiUrl(path), {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: token,
-      ...(init.headers ?? {}),
-    },
+    method: body === undefined ? 'GET' : 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
   })
 
   if (!response.ok) {
-    const detail = await response.text().catch(() => '')
-    throw new Error(`${response.status} ${response.statusText}${detail ? `: ${detail}` : ''}`)
+    let detail = ''
+    try {
+      detail = ((await response.json()) as { detail?: string }).detail ?? ''
+    } catch {
+      detail = response.statusText
+    }
+    throw new Error(detail || `request failed (${response.status})`)
   }
-
-  if (response.status === 204) return undefined as T
   return (await response.json()) as T
 }
 
+export interface RoomInfo {
+  code: string
+  needs_password: boolean
+  members: string[]
+}
+
+export interface JoinResult extends Member {
+  code: string
+  member_id: string
+  is_driver: boolean
+}
+
 export const api = {
-  listDocuments: (token: string) => request<DocumentSummary[]>('/api/documents', token),
+  createRoom: (password: string) =>
+    request<{ code: string; needs_password: boolean }>('/api/rooms', { password }),
 
-  createDocument: (token: string, title: string, mode: DocumentMode) =>
-    request<DocumentSummary>('/api/documents', token, {
-      method: 'POST',
-      body: JSON.stringify({ title, mode }),
-    }),
+  describeRoom: (code: string) => request<RoomInfo>(`/api/rooms/${code}`),
 
-  getDocument: (token: string, id: string) =>
-    request<DocumentSummary>(`/api/documents/${id}`, token),
+  joinRoom: (code: string, name: string, password: string) =>
+    request<JoinResult>(`/api/rooms/${code}/join`, { name, password }),
+}
 
-  updateDocument: (token: string, id: string, changes: { title?: string; mode?: DocumentMode }) =>
-    request<DocumentSummary>(`/api/documents/${id}`, token, {
-      method: 'PATCH',
-      body: JSON.stringify(changes),
-    }),
+/** The member identity for a room, kept so a refresh does not lose your seat. */
+const KEY = 'coverse.member'
 
-  deleteDocument: (token: string, id: string) =>
-    request<void>(`/api/documents/${id}`, token, { method: 'DELETE' }),
+export function rememberMember(code: string, member: JoinResult): void {
+  try {
+    sessionStorage.setItem(KEY, JSON.stringify({ code, member }))
+  } catch {
+    /* private browsing; the seat simply will not survive a refresh */
+  }
+}
 
-  listSuggestions: (token: string, id: string) =>
-    request<Suggestion[]>(`/api/documents/${id}/suggestions`, token),
+export function recallMember(code: string): JoinResult | null {
+  try {
+    const raw = sessionStorage.getItem(KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as { code: string; member: JoinResult }
+    return parsed.code === code ? parsed.member : null
+  } catch {
+    return null
+  }
+}
 
-  dismissSuggestion: (token: string, id: string, suggestionId: string) =>
-    request<void>(`/api/documents/${id}/suggestions/${suggestionId}`, token, { method: 'DELETE' }),
-
-  getContent: (token: string, id: string) =>
-    request<{ markdown: string; xml: string; connected: number }>(
-      `/api/documents/${id}/content`,
-      token,
-    ),
+export function forgetMember(): void {
+  try {
+    sessionStorage.removeItem(KEY)
+  } catch {
+    /* ignore */
+  }
 }

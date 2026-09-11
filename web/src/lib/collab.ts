@@ -1,48 +1,50 @@
 /**
- * The Yjs connection for one document.
+ * The Yjs connection for one room.
  *
- * Owns the Y.Doc, the websocket provider and awareness. The editor, the
- * suggestion rail and the presence bar all read from this single instance, so
- * there is exactly one replica per document in the tab.
+ * This single document carries everything shared: the thread, side chat, queue,
+ * the draft everyone types into, pins and the baton. One replica per tab.
  */
 import * as Y from 'yjs'
 import { WebsocketProvider } from 'y-websocket'
 import { wsUrl } from './origin'
-import type { Peer, Suggestion } from './types'
+import type { Peer, QueueItem, SideMessage } from './types'
 
-const PALETTE = ['#2563eb', '#059669', '#d97706', '#dc2626', '#7c3aed', '#0891b2', '#db2777']
-
-export function colorFor(name: string): string {
-  let hash = 0
-  for (let i = 0; i < name.length; i += 1) hash = (hash * 31 + name.charCodeAt(i)) | 0
-  return PALETTE[Math.abs(hash) % PALETTE.length]
-}
-
-export interface CollabSession {
+export interface RoomSession {
   doc: Y.Doc
   provider: WebsocketProvider
-  suggestions: Y.Map<Suggestion>
+  messages: Y.Array<Y.Map<unknown>>
+  sidechat: Y.Array<SideMessage>
+  queue: Y.Array<QueueItem>
+  composer: Y.Text
+  pins: Y.Map<unknown>
+  control: Y.Map<unknown>
   destroy: () => void
 }
 
-export function connect(documentId: string, token: string, name: string): CollabSession {
+export function connect(
+  code: string,
+  memberId: string,
+  name: string,
+  color: string,
+): RoomSession {
   const doc = new Y.Doc()
 
-  const provider = new WebsocketProvider(wsUrl('/ws/doc'), documentId, doc, {
-    params: { token },
-    // y-websocket reconnects with exponential backoff on its own.
+  const provider = new WebsocketProvider(wsUrl('/ws/room'), code, doc, {
+    params: { member: memberId },
     connect: true,
   })
 
-  provider.awareness.setLocalStateField('user', {
-    name,
-    color: colorFor(name),
-  })
+  provider.awareness.setLocalStateField('user', { name, color, memberId })
 
   return {
     doc,
     provider,
-    suggestions: doc.getMap<Suggestion>('suggestions'),
+    messages: doc.getArray('messages'),
+    sidechat: doc.getArray<SideMessage>('sidechat'),
+    queue: doc.getArray<QueueItem>('queue'),
+    composer: doc.getText('composer'),
+    pins: doc.getMap('pins'),
+    control: doc.getMap('control'),
     destroy: () => {
       provider.awareness.setLocalState(null)
       provider.destroy()
@@ -54,12 +56,13 @@ export function connect(documentId: string, token: string, name: string): Collab
 export function readPeers(provider: WebsocketProvider): Peer[] {
   const peers: Peer[] = []
   provider.awareness.getStates().forEach((state, clientId) => {
-    const user = (state as { user?: { name?: string; color?: string; isAI?: boolean } }).user
+    const user = (state as { user?: Peer }).user
     if (!user?.name) return
     peers.push({
       clientId,
+      memberId: user.memberId,
       name: user.name,
-      color: user.color ?? colorFor(user.name),
+      color: user.color,
       isAI: user.isAI,
     })
   })
