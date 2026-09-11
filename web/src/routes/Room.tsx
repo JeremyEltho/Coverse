@@ -6,6 +6,8 @@ import { Thread } from '../room/Thread'
 import { Composer } from '../room/Composer'
 import { MicControl } from '../room/MicControl'
 import { Rail } from '../room/Rail'
+import { SpritePicker } from '../room/SpritePicker'
+import { SPRITES } from '../sprites/catalogue'
 import { ModelPicker } from '../room/ModelPicker'
 
 export function Room() {
@@ -20,6 +22,11 @@ function JoinForm({ code, onJoined }: { code: string; onJoined: (m: JoinResult) 
   const [name, setName] = useState('')
   const [password, setPassword] = useState('')
   const [needsPassword, setNeedsPassword] = useState(false)
+  // Start on a random creature so the grid never looks like an unanswered form.
+  const [sprite, setSprite] = useState(
+    () => SPRITES[Math.floor(Math.random() * SPRITES.length)].id,
+  )
+  const [taken, setTaken] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const navigate = useNavigate()
@@ -27,7 +34,10 @@ function JoinForm({ code, onJoined }: { code: string; onJoined: (m: JoinResult) 
   useEffect(() => {
     api
       .describeRoom(code)
-      .then((info) => setNeedsPassword(info.needs_password))
+      .then((info) => {
+        setNeedsPassword(info.needs_password)
+        setTaken(info.sprites ?? [])
+      })
       .catch(() => setError('That room does not exist. It may have already ended.'))
   }, [code])
 
@@ -36,7 +46,7 @@ function JoinForm({ code, onJoined }: { code: string; onJoined: (m: JoinResult) 
     setBusy(true)
     setError(null)
     try {
-      const joined = await api.joinRoom(code, name.trim(), password)
+      const joined = await api.joinRoom(code, name.trim(), password, sprite)
       rememberMember(code, joined)
       onJoined(joined)
     } catch (cause) {
@@ -60,6 +70,11 @@ function JoinForm({ code, onJoined }: { code: string; onJoined: (m: JoinResult) 
             autoFocus
             maxLength={40}
           />
+        </label>
+
+        <label>
+          Pick your sprite
+          <SpritePicker value={sprite} taken={taken} onChange={setSprite} />
         </label>
 
         {needsPassword ? (
@@ -159,9 +174,12 @@ function RoomInterior({ code, member }: { code: string; member: JoinResult }) {
 
       <MicControl
         peers={room.peers}
+        members={room.members}
         connected={room.connected}
+        driver={room.driver}
         driverName={room.driverName}
         isDriver={room.isDriver}
+        thinking={room.streaming}
         requests={room.requests}
         onGrant={room.grantMic}
         onRelease={room.releaseMic}
@@ -173,6 +191,7 @@ function RoomInterior({ code, member }: { code: string; member: JoinResult }) {
             messages={room.messages}
             pins={room.pins}
             memberId={member.member_id}
+            members={room.members}
             onPin={room.togglePin}
             onReact={room.toggleReaction}
           />
@@ -187,6 +206,8 @@ function RoomInterior({ code, member }: { code: string; member: JoinResult }) {
             onRequestMic={room.requestMic}
             onWithdraw={room.withdrawRequest}
             requestPending={room.myRequestPending}
+            onTyping={room.signalTyping}
+            typing={room.typing}
           />
         </main>
 

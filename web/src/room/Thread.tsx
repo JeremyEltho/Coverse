@@ -1,9 +1,12 @@
 import { useEffect, useRef } from 'react'
-import type { ThreadMessage } from '../lib/types'
+import type { Member, ThreadMessage } from '../lib/types'
+import { Sprite } from '../sprites/Sprite'
+import { ASSISTANT_SPRITE } from '../sprites/catalogue'
 import { Markdown } from './Markdown'
 
 interface ThreadProps {
   messages: ThreadMessage[]
+  members: Member[]
   pins: string[]
   memberId: string
   onPin: (id: string) => void
@@ -13,7 +16,7 @@ interface ThreadProps {
 const QUICK_REACTIONS = ['👍', '🔥', '🤔']
 
 /** The shared conversation. Everyone sees this, including replies arriving. */
-export function Thread({ messages, pins, memberId, onPin, onReact }: ThreadProps) {
+export function Thread({ messages, members, pins, memberId, onPin, onReact }: ThreadProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const pinnedAtBottom = useRef(true)
 
@@ -49,6 +52,15 @@ export function Thread({ messages, pins, memberId, onPin, onReact }: ThreadProps
       {messages.map((message) => (
         <article key={message.id} className={`turn is-${message.role}`}>
           <header>
+            {message.role === 'assistant' ? (
+              <Sprite def={ASSISTANT_SPRITE} size={22} state={message.done ? 'idle' : 'thinking'} />
+            ) : (
+              <Sprite
+                id={members.find((m) => m.id === message.author)?.sprite}
+                size={22}
+                state="idle"
+              />
+            )}
             <span className="turn-author">
               {message.role === 'assistant' ? 'Assistant' : message.authorName}
             </span>

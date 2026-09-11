@@ -24,6 +24,7 @@ export interface RoomInfo {
   code: string
   needs_password: boolean
   members: string[]
+  sprites: string[]
 }
 
 export interface JoinResult extends Member {
@@ -40,8 +41,8 @@ export const api = {
 
   listModels: () => request<ModelCatalogue>('/api/models'),
 
-  joinRoom: (code: string, name: string, password: string) =>
-    request<JoinResult>(`/api/rooms/${code}/join`, { name, password }),
+  joinRoom: (code: string, name: string, password: string, sprite: string) =>
+    request<JoinResult>(`/api/rooms/${code}/join`, { name, password, sprite }),
 }
 
 /** The member identity for a room, kept so a refresh does not lose your seat. */

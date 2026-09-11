@@ -2,6 +2,7 @@ export interface Member {
   id: string
   name: string
   color: string
+  sprite: string
 }
 
 export interface MicRequest {
@@ -49,7 +50,10 @@ export interface Peer {
   memberId?: string
   name: string
   color: string
+  sprite?: string
   isAI?: boolean
+  /** Epoch ms of this person's last keystroke in the shared draft. */
+  typingAt?: number
 }
 
 export interface ModelInfo {

@@ -7,7 +7,7 @@
 import * as Y from 'yjs'
 import { WebsocketProvider } from 'y-websocket'
 import { wsUrl } from './origin'
-import type { Peer, QueueItem, SideMessage } from './types'
+import type { Member, Peer, QueueItem, SideMessage } from './types'
 
 export interface RoomSession {
   doc: Y.Doc
@@ -18,6 +18,7 @@ export interface RoomSession {
   composer: Y.Text
   pins: Y.Map<unknown>
   control: Y.Map<unknown>
+  members: Y.Map<Member>
   destroy: () => void
 }
 
@@ -30,6 +31,7 @@ export function connect(
   memberId: string,
   name: string,
   color: string,
+  sprite: string,
   onFatal?: (reason: 'room-gone' | 'not-a-member') => void,
 ): RoomSession {
   const doc = new Y.Doc()
@@ -39,7 +41,7 @@ export function connect(
     connect: true,
   })
 
-  provider.awareness.setLocalStateField('user', { name, color, memberId })
+  provider.awareness.setLocalStateField('user', { name, color, memberId, sprite })
 
   // y-websocket reconnects on any close, which is right for a network blip and
   // wrong for a room that no longer exists.
@@ -61,6 +63,7 @@ export function connect(
     composer: doc.getText('composer'),
     pins: doc.getMap('pins'),
     control: doc.getMap('control'),
+    members: doc.getMap<Member>('members'),
     destroy: () => {
       provider.awareness.setLocalState(null)
       provider.destroy()
@@ -79,7 +82,9 @@ export function readPeers(provider: WebsocketProvider): Peer[] {
       memberId: user.memberId,
       name: user.name,
       color: user.color,
+      sprite: user.sprite,
       isAI: user.isAI,
+      typingAt: user.typingAt,
     })
   })
   return peers
