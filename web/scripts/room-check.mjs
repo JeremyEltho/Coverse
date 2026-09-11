@@ -155,6 +155,24 @@ await sleep(300)
 check('private fork does not touch the shared thread',
   alice.messages().length === threadBefore && bob.messages().length === threadBefore)
 
+// Sharing a private answer publishes the exchange. It must not re-send the
+// answer as a prompt: doing that made the assistant reply to its own words.
+const beforeShare = alice.messages().length
+alice.send({
+  type: 'share_fork',
+  question: 'quietly explain that last answer',
+  answer: 'A private explanation worth showing everyone.',
+})
+await waitFor(() => bob.messages().length === beforeShare + 2, 'shared exchange lands')
+const sharedPair = bob.messages().slice(-2)
+check('sharing a fork publishes the exchange to everyone',
+  sharedPair[0].role === 'user' && sharedPair[1].role === 'assistant')
+check('the shared answer is not re-sent as a prompt',
+  sharedPair[1].body === 'A private explanation worth showing everyone.' && sharedPair[1].done)
+await sleep(700)
+check('sharing does not trigger a new AI reply',
+  bob.messages().length === beforeShare + 2, `${bob.messages().length} messages`)
+
 // Promoting is a driver action, since it costs a turn.
 alice.events.length = 0
 const sideId = alice.doc.getArray('sidechat').get(0).id

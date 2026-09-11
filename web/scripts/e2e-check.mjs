@@ -196,6 +196,66 @@ check('pins export to a markdown file', file !== null, file ? file.suggestedFile
 await alice.page.screenshot({ path: '/tmp/coverse-room-full.png' })
 await cy.page.screenshot({ path: '/tmp/coverse-room-spectator.png' })
 
+// A room that is gone must say so. Retrying forever would leave people staring
+// at "reconnecting" for something that is never coming back.
+const ghost = await open('Ghost', 'ZZZZZZ')
+await ghost.page.waitForSelector('.error-banner', { timeout: 10000 })
+check('joining a room that does not exist explains itself', true)
+
+const stale = await open('Stale', code)
+await stale.page.evaluate((c) => {
+  sessionStorage.setItem(
+    'coverse.member',
+    JSON.stringify({
+      code: c,
+      member: {
+        code: c,
+        member_id: 'not-a-real-member',
+        name: 'Stale',
+        color: '#000',
+        is_driver: false,
+      },
+    }),
+  )
+}, code)
+await stale.page.reload()
+await stale.page.waitForSelector('.landing-card h1', { timeout: 15000 })
+check('a stale seat is explained rather than spinning forever',
+  /not in this room|ended/i.test(await stale.page.locator('.landing-card h1').textContent()))
+check('and offers a way back in',
+  (await stale.page.locator('button:has-text("Try joining")').count()) > 0)
+
+// A phone cannot drive, but it must be able to watch and talk.
+const phoneContext = await browser.newContext({
+  viewport: { width: 390, height: 844 },
+  isMobile: true,
+  hasTouch: true,
+})
+const phone = await phoneContext.newPage()
+await phone.goto(`${BASE}/r/${code}`)
+await phone.waitForSelector('input', { timeout: 15000 })
+await phone.fill('input', 'Phone')
+await phone.click('button[type=submit]')
+await phone.waitForSelector('.room-body', { timeout: 15000 })
+await sleep(800)
+
+const overflow = await phone.evaluate(
+  () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+)
+check('no horizontal overflow on a phone', overflow <= 0, `${overflow}px`)
+check('a phone can read the thread', (await phone.locator('.turn').count()) > 0)
+
+await phone.click('.rail-tabs button:has-text("Side chat")')
+await phone.fill('.panel-composer input', 'watching from my phone')
+await phone.press('.panel-composer input', 'Enter')
+await bob.page.click('.rail-tabs button:has-text("Side chat")')
+await bob.page.waitForFunction(
+  () => document.body.textContent?.includes('watching from my phone'),
+  { timeout: 10000 },
+)
+check('a phone spectator can use the side chat', true)
+await phone.screenshot({ path: '/tmp/coverse-phone.png' })
+
 await browser.close()
 const failed = results.filter((r) => !r.ok)
 console.log(`\n${results.length - failed.length}/${results.length} browser checks passed`)

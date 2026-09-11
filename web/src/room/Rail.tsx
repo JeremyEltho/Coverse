@@ -21,7 +21,7 @@ interface RailProps {
   onDropQueued: (id: string) => void
   onUnpin: (id: string) => void
   onAskPrivately: (body: string) => void
-  onShareFork: (content: string) => void
+  onShareFork: (question: string, answer: string) => void
 }
 
 const TABS: { id: RailTab; label: string }[] = [
@@ -93,7 +93,6 @@ export function Rail(props: RailProps) {
           <ForkPanel
             turns={props.forkTurns}
             busy={props.forkBusy}
-            isDriver={props.isDriver}
             onAsk={props.onAskPrivately}
             onShare={props.onShareFork}
           />

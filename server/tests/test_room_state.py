@@ -110,3 +110,28 @@ def test_two_replicas_of_a_room_converge():
 
     assert a.transcript() == b.transcript()
     assert len(a.transcript()) == 2
+
+
+def test_a_shared_message_is_marked_as_such():
+    """Sharing a private exchange must not look like it was asked out loud."""
+    room = RoomDoc()
+    room.add_message(
+        role="user", author="u1", author_name="Panda", body="what are they on about", shared=True
+    )
+    _, answer = room.add_message(
+        role="assistant",
+        author="assistant",
+        author_name="Assistant",
+        body="They are discussing X.",
+        shared=True,
+        done=True,
+    )
+
+    assert all(entry["shared"] for entry in room.messages)
+    assert answer["done"] is True, "a shared answer is already complete, not streaming"
+
+
+def test_an_ordinary_message_is_not_marked_shared():
+    room = RoomDoc()
+    _, entry = room.add_message(role="user", author="u1", author_name="Alice", body="hi")
+    assert entry["shared"] is False

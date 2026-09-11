@@ -18,6 +18,7 @@ Client to server:
     {"type": "release_mic"}                         driver only
     {"type": "sidechat",    "body": "..."}
     {"type": "promote",     "id": "side_..."}
+    {"type": "share_fork",  "question": "...", "answer": "..."}
     {"type": "queue",       "body": "..."}
     {"type": "fork",        "body": "...", "history": [...]}
     {"type": "ping"}
@@ -205,6 +206,33 @@ async def _handle(
         job = _running.get(room.code)
         if job and not job.done():
             job.cancel()
+        return
+
+    if kind == "share_fork":
+        # Bring a private exchange into the room. This publishes what was already
+        # said; it does not ask the model anything, so it costs no turn and needs
+        # no mic. Re-sending the answer as a prompt would make the assistant
+        # reply to its own words.
+        question = str(payload.get("question") or "").strip()
+        answer = str(payload.get("answer") or "").strip()
+        if not answer:
+            return
+        if question:
+            room.state.add_message(
+                role="user",
+                author=member,
+                author_name=name,
+                body=question,
+                shared=True,
+            )
+        room.state.add_message(
+            role="assistant",
+            author="assistant",
+            author_name="Assistant",
+            body=answer,
+            shared=True,
+            done=True,
+        )
         return
 
     if kind == "fork":

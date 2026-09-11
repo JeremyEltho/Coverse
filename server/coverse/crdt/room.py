@@ -143,9 +143,21 @@ class RoomDoc:
     # --- the thread ------------------------------------------------------------
 
     def add_message(
-        self, *, role: str, author: str, author_name: str, body: str = ""
+        self,
+        *,
+        role: str,
+        author: str,
+        author_name: str,
+        body: str = "",
+        shared: bool = False,
+        done: bool | None = None,
     ) -> tuple[str, Map]:
-        """Append a message. The body is a Text so a reply can stream into it."""
+        """Append a message. The body is a Text so a reply can stream into it.
+
+        ``shared`` marks a message brought in from someone's private thread, so
+        the room can see where it came from rather than it looking like it was
+        asked out loud.
+        """
         message_id = new_id("msg")
         with self.doc.transaction():
             entry = Map(
@@ -156,7 +168,8 @@ class RoomDoc:
                     "author_name": author_name,
                     "body": Text(body),
                     "at": time.time(),
-                    "done": role != "assistant",
+                    "done": done if done is not None else role != "assistant",
+                    "shared": shared,
                     "reactions": Map(),
                 }
             )

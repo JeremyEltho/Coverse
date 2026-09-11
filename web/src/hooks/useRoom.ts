@@ -9,7 +9,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type * as Y from 'yjs'
 import { connect, readPeers, type RoomSession } from '../lib/collab'
-import { ControlSocket, newJobId, type ControlEvent } from '../lib/controlSocket'
+import {
+  ControlSocket,
+  newJobId,
+  type ControlEvent,
+  type FatalReason,
+} from '../lib/controlSocket'
 import type { JoinResult } from '../lib/api'
 import type {
   ForkTurn,
@@ -35,6 +40,7 @@ function readMessage(entry: Y.Map<unknown>): ThreadMessage {
     body: (entry.get('body') as Y.Text | undefined)?.toString() ?? '',
     at: Number(entry.get('at') ?? 0),
     done: Boolean(entry.get('done')),
+    shared: Boolean(entry.get('shared')),
     reactions,
   }
 }
@@ -52,6 +58,7 @@ export function useRoom(code: string, me: JoinResult) {
   const [driverNameRaw, setDriverNameRaw] = useState('')
   const [requests, setRequests] = useState<MicRequest[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [ended, setEnded] = useState<FatalReason | null>(null)
   const [modelLabel, setModelLabel] = useState('')
 
   const [forkTurns, setForkTurns] = useState<ForkTurn[]>([])
@@ -62,7 +69,7 @@ export function useRoom(code: string, me: JoinResult) {
   // --- shared state -----------------------------------------------------------
 
   useEffect(() => {
-    const instance = connect(code, me.member_id, me.name, me.color)
+    const instance = connect(code, me.member_id, me.name, me.color, setEnded)
     setSession(instance)
 
     const syncPeers = () => setPeers(readPeers(instance.provider))
@@ -114,6 +121,8 @@ export function useRoom(code: string, me: JoinResult) {
     const socket = new ControlSocket(code, me.member_id)
     controlRef.current = socket
 
+    const unsubscribeFatal = socket.onFatal(setEnded)
+
     const unsubscribe = socket.on((event: ControlEvent) => {
       if (event.type === 'ready') {
         setModelLabel(`${event.provider ?? ''} · ${event.model ?? ''}`)
@@ -146,6 +155,7 @@ export function useRoom(code: string, me: JoinResult) {
 
     return () => {
       unsubscribe()
+      unsubscribeFatal()
       socket.destroy()
       controlRef.current = null
     }
@@ -249,17 +259,23 @@ export function useRoom(code: string, me: JoinResult) {
     [forkTurns],
   )
 
-  const shareFork = useCallback(
-    (content: string) => {
-      if (isDriver) send(content)
-      else addToQueue(content)
-    },
-    [isDriver, send, addToQueue],
-  )
+  /**
+   * Publish a private exchange to the room.
+   *
+   * This shows everyone what was already said. It deliberately does not send
+   * the answer as a new prompt: doing that made the assistant reply to its own
+   * words, which is how this was originally broken.
+   */
+  const shareFork = useCallback((question: string, answer: string) => {
+    if (answer.trim()) {
+      controlRef.current?.send({ type: 'share_fork', question, answer })
+    }
+  }, [])
 
   return {
     session,
     connected,
+    ended,
     peers,
     messages,
     sidechat,

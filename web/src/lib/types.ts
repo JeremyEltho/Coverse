@@ -18,6 +18,7 @@ export interface ThreadMessage {
   body: string
   at: number
   done: boolean
+  shared: boolean
   reactions: Record<string, string[]>
 }
 

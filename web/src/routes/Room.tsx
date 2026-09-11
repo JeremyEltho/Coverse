@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { api, recallMember, rememberMember, type JoinResult } from '../lib/api'
+import { api, forgetMember, recallMember, rememberMember, type JoinResult } from '../lib/api'
 import { useRoom } from '../hooks/useRoom'
 import { Thread } from '../room/Thread'
 import { Composer } from '../room/Composer'
@@ -89,6 +89,44 @@ function JoinForm({ code, onJoined }: { code: string; onJoined: (m: JoinResult) 
 function RoomInterior({ code, member }: { code: string; member: JoinResult }) {
   const room = useRoom(code, member)
   const [copied, setCopied] = useState(false)
+  const navigate = useNavigate()
+
+  // A room that is gone is not a connection problem, and saying "reconnecting"
+  // forever would be a lie. The seat is dropped so the code can be reused if
+  // somebody starts a fresh room with it.
+  if (room.ended) {
+    return (
+      <div className="landing">
+        <div className="landing-card">
+          <h1>{room.ended === 'room-gone' ? 'This room has ended' : 'You are not in this room'}</h1>
+          <p className="muted">
+            {room.ended === 'room-gone'
+              ? 'Rooms disappear once everyone has left. Nothing was saved, which is the deal.'
+              : 'Your seat expired, probably because the room ended and was started again.'}
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              forgetMember()
+              navigate('/')
+            }}
+          >
+            Start a new room
+          </button>
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => {
+              forgetMember()
+              location.reload()
+            }}
+          >
+            Try joining {code} again
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   const copyLink = async () => {
     try {
