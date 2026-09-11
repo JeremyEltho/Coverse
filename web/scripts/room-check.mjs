@@ -42,8 +42,8 @@ async function waitFor(predicate, label, timeoutMs = 15000) {
 
 const { code } = await api('/api/rooms', {})
 
-async function member(name) {
-  const me = await api(`/api/rooms/${code}/join`, { name })
+async function member(name, sprite = '') {
+  const me = await api(`/api/rooms/${code}/join`, { name, sprite })
   const doc = new Y.Doc()
   const provider = new WebsocketProvider(`${ws}/ws/room`, code, doc, {
     WebSocketPolyfill: WS,
@@ -62,11 +62,12 @@ async function member(name) {
       body: m.get('body').toString(), done: m.get('done'),
     })),
     control_: () => doc.getMap('control'),
+    members_: () => doc.getMap('members'),
   }
 }
 
-const alice = await member('Alice')
-const bob = await member('Bob')
+const alice = await member('Alice', 'ghost')
+const bob = await member('Bob', 'frog')
 await waitFor(() => alice.provider.wsconnected && bob.provider.wsconnected, 'connected')
 check('two members connect to one room', true, `code ${code}`)
 
@@ -172,6 +173,13 @@ check('the shared answer is not re-sent as a prompt',
 await sleep(700)
 check('sharing does not trigger a new AI reply',
   bob.messages().length === beforeShare + 2, `${bob.messages().length} messages`)
+
+// Identity has to outlive presence: a message still needs a face after its
+// author disconnects and drops out of awareness.
+await waitFor(() => bob.members_().size >= 2, 'members replicated')
+const seen = [...bob.members_().values()].map((m) => m.sprite).sort()
+check('a chosen sprite reaches every client through shared state',
+  seen.includes('ghost') && seen.includes('frog'), seen.join(', '))
 
 // The model is shared state, and changing it belongs to the driver for the same
 // reason sending does: it decides what the next answer comes from.

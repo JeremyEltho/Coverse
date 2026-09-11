@@ -979,3 +979,163 @@ input:focus, textarea:focus {
 @media (max-width: 880px) {
   .model-picker { display: none; }
 }
+
+/* ===========================================================================
+   Sprites
+   ---------------------------------------------------------------------------
+   One drawing per creature; every state below is motion applied to it. Keeping
+   the animation in CSS means it interpolates rather than stepping, and it costs
+   no extra pixel data.
+   =========================================================================== */
+
+.sprite {
+  display: block;
+  image-rendering: pixelated;
+  transform-origin: 50% 100%;
+  /* Grounds the creature so it reads as sitting on the surface. */
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.45));
+}
+
+.sprite.is-idle { animation: sprite-bob 2.6s ease-in-out infinite; }
+.sprite.is-typing { animation: sprite-type 0.5s ease-in-out infinite; }
+.sprite.is-talking { animation: sprite-talk 1.5s ease-in-out infinite; }
+.sprite.is-thinking { animation: sprite-think 1.1s ease-in-out infinite; }
+.sprite.is-still { animation: none; }
+
+@keyframes sprite-bob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-1.5px); }
+}
+/* Leaning in, the way someone hunches over a keyboard. */
+@keyframes sprite-type {
+  0%, 100% { transform: translateY(0) rotate(-3deg); }
+  50%      { transform: translateY(-1px) rotate(3deg); }
+}
+/* A squash and stretch, so the holder looks like they are speaking. */
+@keyframes sprite-talk {
+  0%, 100% { transform: translateY(0) scaleY(1); }
+  40%      { transform: translateY(-2px) scaleY(1.06); }
+  70%      { transform: translateY(0) scaleY(0.97); }
+}
+@keyframes sprite-think {
+  0%, 100% { transform: translateY(0) scale(1); opacity: 0.85; }
+  50%      { transform: translateY(-2px) scale(1.05); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sprite { animation: none !important; }
+}
+
+/* --- the picker ----------------------------------------------------------- */
+
+.sprite-picker { width: 100%; }
+.sprite-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 0.3rem;
+}
+
+.sprite-choice {
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 0 0 1px transparent;
+  border-radius: var(--r-sm);
+  padding: 0.35rem;
+  display: grid;
+  place-items: center;
+  position: relative;
+  transition: background 0.14s ease, transform 0.14s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.sprite-choice:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  transform: translateY(-2px);
+  filter: none;
+}
+.sprite-choice.is-chosen {
+  background: rgba(255, 255, 255, 0.15);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+}
+/* Already in the room: discouraged, never blocked. */
+.sprite-choice.is-taken::after {
+  content: '';
+  position: absolute;
+  top: 3px; right: 3px;
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.5);
+}
+.sprite-choice.is-taken .sprite { opacity: 0.45; }
+.sprite-choice.is-taken.is-chosen .sprite { opacity: 1; }
+
+/* --- the roster ----------------------------------------------------------- */
+
+.roster { display: flex; align-items: flex-end; gap: 0.15rem; }
+
+.roster-slot {
+  position: relative;
+  display: grid;
+  place-items: end center;
+  padding: 0 0.15rem 0.1rem;
+  border-radius: var(--r-sm);
+  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), background 0.22s ease;
+}
+.roster-slot.is-holding {
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 0 0 1px var(--glass-stroke), 0 0 16px -6px var(--member, #fff);
+  transform: translateY(-2px);
+}
+/* The person's own colour still identifies them, now as a base rather than a
+   disc, since the sprite carries the identity. */
+.roster-slot.is-holding::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 18%; right: 18%;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--member, #fff);
+}
+.roster-slot.is-ai { margin-left: 0.4rem; opacity: 0.85; }
+
+/* The mic itself, so holding it is visible and not just stated. */
+.mic-glyph {
+  position: absolute;
+  right: -2px;
+  top: 2px;
+  width: 5px;
+  height: 9px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.55);
+  animation: mic-in 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.mic-glyph::after {
+  content: '';
+  position: absolute;
+  left: 1px; bottom: -4px;
+  width: 3px; height: 4px;
+  background: rgba(255, 255, 255, 0.55);
+}
+@keyframes mic-in {
+  from { opacity: 0; transform: translate(-10px, 4px) scale(0.6); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* --- typing indicator ----------------------------------------------------- */
+
+.composer-typing {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  min-height: 1.2rem;
+}
+
+/* --- sprites in the thread and side chat ---------------------------------- */
+
+.turn header .sprite { margin-right: 0.1rem; }
+.mic-request .sprite { margin-right: 0.1rem; }
+
+@media (max-width: 880px) {
+  .sprite-grid { grid-template-columns: repeat(6, 1fr); }
+  .roster-slot { padding: 0 0.05rem 0.1rem; }
+}

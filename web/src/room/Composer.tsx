@@ -1,5 +1,7 @@
 import type * as Y from 'yjs'
 import { useSharedText } from '../hooks/useSharedText'
+import { Sprite } from '../sprites/Sprite'
+import type { Peer } from '../lib/types'
 
 interface ComposerProps {
   text: Y.Text | null
@@ -11,6 +13,8 @@ interface ComposerProps {
   onRequestMic: () => void
   onWithdraw: () => void
   requestPending: boolean
+  onTyping: () => void
+  typing: Peer[]
 }
 
 /**
@@ -29,6 +33,8 @@ export function Composer({
   onRequestMic,
   onWithdraw,
   requestPending,
+  onTyping,
+  typing,
 }: ComposerProps) {
   const { ref, value, onInput } = useSharedText(text)
 
@@ -44,7 +50,10 @@ export function Composer({
         <textarea
           ref={ref}
           value={value}
-          onChange={(event) => onInput(event.target.value)}
+          onChange={(event) => {
+            onInput(event.target.value)
+            onTyping()
+          }}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey) {
               event.preventDefault()
@@ -60,6 +69,20 @@ export function Composer({
         />
 
         <div className="composer-actions">
+          <span className="composer-typing" aria-live="polite">
+            {typing.map((peer) => (
+              <Sprite
+                key={peer.clientId}
+                id={peer.sprite}
+                size={20}
+                state="typing"
+                title={`${peer.name} is typing`}
+              />
+            ))}
+            {typing.length === 1 ? `${typing[0].name} is typing` : null}
+            {typing.length > 1 ? `${typing.length} people typing` : null}
+          </span>
+
           <span className="composer-hint">
             {isDriver ? (
               'Everyone can edit this. Only you can send.'

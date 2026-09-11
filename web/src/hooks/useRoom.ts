@@ -18,6 +18,7 @@ import {
 import type { JoinResult } from '../lib/api'
 import type {
   ForkTurn,
+  Member,
   MicRequest,
   Peer,
   QueueItem,
@@ -57,6 +58,8 @@ export function useRoom(code: string, me: JoinResult) {
   const [driver, setDriver] = useState<string | null>(null)
   const [driverNameRaw, setDriverNameRaw] = useState('')
   const [model, setModelState] = useState('')
+  const [members, setMembers] = useState<Member[]>([])
+  const [typing, setTyping] = useState<Peer[]>([])
   const [requests, setRequests] = useState<MicRequest[]>([])
   const [error, setError] = useState<string | null>(null)
   const [ended, setEnded] = useState<FatalReason | null>(null)
@@ -70,7 +73,7 @@ export function useRoom(code: string, me: JoinResult) {
   // --- shared state -----------------------------------------------------------
 
   useEffect(() => {
-    const instance = connect(code, me.member_id, me.name, me.color, setEnded)
+    const instance = connect(code, me.member_id, me.name, me.color, me.sprite, setEnded)
     setSession(instance)
 
     const syncPeers = () => setPeers(readPeers(instance.provider))
@@ -82,6 +85,7 @@ export function useRoom(code: string, me: JoinResult) {
     const readSide = () => setSidechat(instance.sidechat.toArray())
     const readQueue = () => setQueue(instance.queue.toArray())
     const readPins = () => setPins(Array.from(instance.pins.keys()))
+    const readMembers = () => setMembers(Array.from(instance.members.values()))
     const readControl = () => {
       setDriver((instance.control.get('driver') as string) || null)
       setDriverNameRaw((instance.control.get('driver_name') as string) || '')
@@ -93,6 +97,7 @@ export function useRoom(code: string, me: JoinResult) {
     instance.sidechat.observe(readSide)
     instance.queue.observe(readQueue)
     instance.pins.observe(readPins)
+    instance.members.observe(readMembers)
     instance.control.observe(readControl)
     instance.provider.awareness.on('change', syncPeers)
     instance.provider.on('status', onStatus)
@@ -101,6 +106,7 @@ export function useRoom(code: string, me: JoinResult) {
     readSide()
     readQueue()
     readPins()
+    readMembers()
     readControl()
     syncPeers()
 
@@ -109,6 +115,7 @@ export function useRoom(code: string, me: JoinResult) {
       instance.sidechat.unobserve(readSide)
       instance.queue.unobserve(readQueue)
       instance.pins.unobserve(readPins)
+      instance.members.unobserve(readMembers)
       instance.control.unobserve(readControl)
       instance.provider.awareness.off('change', syncPeers)
       instance.provider.off('status', onStatus)
@@ -162,6 +169,30 @@ export function useRoom(code: string, me: JoinResult) {
       controlRef.current = null
     }
   }, [code, me.member_id])
+
+  // Typing is derived from awareness timestamps and swept on a timer, because a
+  // socket that drops mid-keystroke would otherwise leave someone typing forever.
+  useEffect(() => {
+    const sweep = () => {
+      const cutoff = Date.now() - 2200
+      setTyping(
+        peers.filter(
+          (p) => p.typingAt && p.typingAt > cutoff && p.memberId !== me.member_id,
+        ),
+      )
+    }
+    sweep()
+    const timer = window.setInterval(sweep, 600)
+    return () => window.clearInterval(timer)
+  }, [peers, me.member_id])
+
+  /** Tell the room this person is editing the shared draft. */
+  const signalTyping = useCallback(() => {
+    const awareness = session?.provider.awareness
+    if (!awareness) return
+    const user = awareness.getLocalState()?.user as Record<string, unknown> | undefined
+    awareness.setLocalStateField('user', { ...(user ?? {}), typingAt: Date.now() })
+  }, [session])
 
   // --- derived ----------------------------------------------------------------
 
@@ -280,6 +311,9 @@ export function useRoom(code: string, me: JoinResult) {
 
   return {
     session,
+    members,
+    typing,
+    signalTyping,
     connected,
     ended,
     peers,

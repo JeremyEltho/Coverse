@@ -54,19 +54,25 @@ check('create a room and join it', true, `code ${code}`)
 
 // The others follow the link.
 const others = []
-for (const name of ['Bob', 'Cy', 'Dana']) {
+let pickerOptions = 0
+for (const [index, name] of ['Bob', 'Cy', 'Dana'].entries()) {
   const person = await open(name, code)
   await person.page.waitForSelector('input', { timeout: 15000 })
+  if (index === 0) pickerOptions = await person.page.locator('.sprite-choice').count()
   await person.page.fill('input', name)
+  // A different creature each, so the roster reads as four distinct people.
+  await person.page.click(`.sprite-choice:nth-child(${index * 3 + 4})`)
   await person.page.click('button[type=submit]')
   await person.page.waitForSelector('.room-body', { timeout: 15000 })
   others.push(person)
 }
+check('the join screen offers a sprite picker', pickerOptions >= 8, `${pickerOptions} creatures`)
 const [bob, cy, dana] = others
 await sleep(1200)
 
-const avatars = await alice.page.locator('.avatar').count()
-check('all four people appear in the room', avatars >= 4, `${avatars} avatars`)
+const inRoom = await alice.page.locator('.roster .sprite').count()
+check('all four people appear in the room', inRoom >= 5,
+  `${inRoom} sprites, four people plus the assistant`)
 
 check('the room creator holds the mic',
   (await alice.page.locator('.mic-driver').textContent()).includes('You have the mic'))
@@ -195,6 +201,34 @@ check('pins export to a markdown file', file !== null, file ? file.suggestedFile
 
 await alice.page.screenshot({ path: '/tmp/coverse-room-full.png' })
 await cy.page.screenshot({ path: '/tmp/coverse-room-spectator.png' })
+
+// Sprites: chosen on the way in, and drawn everywhere the person appears.
+check('everyone in the room has a sprite in the roster',
+  (await alice.page.locator('.roster .sprite').count()) >= 5, 'four people plus the assistant')
+check('the mic holder is visibly holding it',
+  (await alice.page.locator('.roster-slot.is-holding .mic-glyph').count()) === 1)
+check('messages carry their author\'s sprite',
+  (await alice.page.locator('.turn .sprite').count()) > 0)
+
+// Typing into the shared draft is presence: everyone else sees who is doing it.
+await dana.page.click('.composer textarea')
+await dana.page.type('.composer textarea', 'dana typing', { delay: 25 })
+const sawTyping = await alice.page
+  .waitForFunction(
+    () => (document.querySelector('.composer-typing')?.textContent ?? '').includes('typing'),
+    { timeout: 8000 },
+  )
+  .then(() => true)
+  .catch(() => false)
+check('a typing indicator reaches the other clients', sawTyping)
+
+// And it expires on its own, so a dropped socket cannot leave someone
+// permanently typing.
+await sleep(3200)
+check('the typing indicator clears when they stop',
+  (await alice.page.evaluate(
+    () => (document.querySelector('.composer-typing')?.textContent ?? '').trim())) === '')
+await dana.page.fill('.composer textarea', '')
 
 // The model picker belongs to whoever has the mic.
 check('the driver gets a model picker', (await bob.page.locator('.model-trigger').count()) === 1)
