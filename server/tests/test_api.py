@@ -115,3 +115,32 @@ def test_a_provider_that_cannot_reach_its_catalogue_does_not_break_the_page(clie
     body = client.get("/api/models").json()
     assert body["models"] == []
     assert "unreachable" in body["error"]
+
+
+def test_a_chosen_sprite_is_stored_and_advertised(client):
+    code = client.post("/api/rooms", json={}).json()["code"]
+
+    joined = client.post(
+        f"/api/rooms/{code}/join", json={"name": "Alice", "sprite": "ghost"}
+    ).json()
+    assert joined["sprite"] == "ghost"
+
+    from coverse.ws.rooms import registry
+
+    room = registry.get(code)
+    room.connect(joined["member_id"])
+
+    # The picker uses this to mark creatures already in the room.
+    assert client.get(f"/api/rooms/{code}").json()["sprites"] == ["ghost"]
+
+
+def test_a_sprite_id_is_sanitised_rather_than_trusted(client):
+    code = client.post("/api/rooms", json={}).json()["code"]
+    response = client.post(f"/api/rooms/{code}/join", json={"name": "Alice", "sprite": "<script>"})
+    assert response.status_code == 422
+
+
+def test_joining_without_a_sprite_still_works(client):
+    """The client falls back to a default, so this must not be required."""
+    code = client.post("/api/rooms", json={}).json()["code"]
+    assert client.post(f"/api/rooms/{code}/join", json={"name": "Alice"}).status_code == 200

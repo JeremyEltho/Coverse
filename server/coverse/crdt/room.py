@@ -32,6 +32,7 @@ QUEUE = "queue"
 COMPOSER = "composer"
 PINS = "pins"
 CONTROL = "control"
+MEMBERS = "members"
 
 # control keys
 DRIVER = "driver"
@@ -57,6 +58,7 @@ class RoomDoc:
         self.doc[COMPOSER] = Text()
         self.doc[PINS] = Map()
         self.doc[CONTROL] = Map()
+        self.doc[MEMBERS] = Map()
 
     # --- shared types ----------------------------------------------------------
 
@@ -83,6 +85,25 @@ class RoomDoc:
     @property
     def control(self) -> Map:
         return self.doc[CONTROL]
+
+    @property
+    def members(self) -> Map:
+        """Everyone who has been in the room, by id.
+
+        Presence lives in awareness and vanishes when a socket closes, but a
+        message still needs to know who wrote it, so identity is kept here for
+        the life of the room instead.
+        """
+        return self.doc[MEMBERS]
+
+    def put_member(self, member_id: str, *, name: str, color: str, sprite: str) -> None:
+        with self.doc.transaction():
+            self.members[member_id] = {
+                "id": member_id,
+                "name": name,
+                "color": color,
+                "sprite": sprite,
+            }
 
     # --- state transfer --------------------------------------------------------
 

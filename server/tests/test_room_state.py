@@ -147,3 +147,16 @@ def test_the_chosen_model_is_shared_room_state():
     other = RoomDoc()
     other.apply_update(room.encode_update())
     assert other.model_name == "Llama 3.3 70B"
+
+
+def test_member_identity_outlives_presence():
+    """A message needs to know who wrote it after that person disconnects, so
+    identity lives in the document rather than only in awareness."""
+    room = RoomDoc()
+    room.put_member("m1", name="Alice", color="#fff", sprite="ghost")
+
+    other = RoomDoc()
+    other.apply_update(room.encode_update())
+    stored = dict(other.members["m1"])
+    assert stored["name"] == "Alice"
+    assert stored["sprite"] == "ghost"

@@ -55,12 +55,13 @@ def hash_password(password: str) -> str:
 class Member:
     """One person in the room. Identity lasts only as long as the room does."""
 
-    __slots__ = ("id", "name", "color", "joined_at", "connections")
+    __slots__ = ("id", "name", "color", "sprite", "joined_at", "connections")
 
-    def __init__(self, member_id: str, name: str, color: str) -> None:
+    def __init__(self, member_id: str, name: str, color: str, sprite: str = "") -> None:
         self.id = member_id
         self.name = name
         self.color = color
+        self.sprite = sprite
         self.joined_at = time.time()
         # A member can have more than one socket open (the sync socket and the
         # control socket, or two tabs), so presence is a count, not a flag.
@@ -112,9 +113,12 @@ class Room:
 
     # --- membership ------------------------------------------------------------
 
-    def add_member(self, name: str, color: str) -> Member:
-        member = Member(secrets.token_hex(8), name.strip()[:40] or "Anonymous", color)
+    def add_member(self, name: str, color: str, sprite: str = "") -> Member:
+        member = Member(secrets.token_hex(8), name.strip()[:40] or "Anonymous", color, sprite)
         self.members[member.id] = member
+        # Mirror into shared state so every client can draw this person, even
+        # after they disconnect and drop out of awareness.
+        self.state.put_member(member.id, name=member.name, color=member.color, sprite=member.sprite)
         # First person through the door takes the mic, so a solo user never has
         # to ask themselves for permission to type.
         if self.state.driver is None or self.state.driver == "":
