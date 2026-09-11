@@ -52,6 +52,11 @@ export function Thread({ messages, pins, memberId, onPin, onReact }: ThreadProps
             <span className="turn-author">
               {message.role === 'assistant' ? 'Assistant' : message.authorName}
             </span>
+            {message.shared ? (
+              <span className="turn-shared" title="Brought in from a private thread">
+                shared privately
+              </span>
+            ) : null}
             {pins.includes(message.id) ? <span className="turn-pinned">pinned</span> : null}
           </header>
 

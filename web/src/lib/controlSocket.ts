@@ -31,6 +31,7 @@ export type ControlMessage =
   | { type: 'release_mic' }
   | { type: 'sidechat'; body: string }
   | { type: 'promote'; id: string }
+  | { type: 'share_fork'; question: string; answer: string }
   | { type: 'queue'; body: string }
   | { type: 'fork'; job: string; body: string; history: { role: string; content: string }[] }
   | { type: 'ping' }

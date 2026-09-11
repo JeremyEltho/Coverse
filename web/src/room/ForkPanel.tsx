@@ -5,9 +5,8 @@ import { Markdown } from './Markdown'
 interface ForkPanelProps {
   turns: ForkTurn[]
   busy: boolean
-  isDriver: boolean
   onAsk: (body: string) => void
-  onShare: (content: string) => void
+  onShare: (question: string, answer: string) => void
 }
 
 /**
@@ -15,9 +14,9 @@ interface ForkPanelProps {
  *
  * For the person who wants to check something without taking the mic or
  * derailing everyone. Nothing here is visible to the room until it is shared,
- * which sends it if you have the mic and queues it if you do not.
+ * and sharing publishes the exchange rather than re-asking it.
  */
-export function ForkPanel({ turns, busy, isDriver, onAsk, onShare }: ForkPanelProps) {
+export function ForkPanel({ turns, busy, onAsk, onShare }: ForkPanelProps) {
   const [draft, setDraft] = useState('')
 
   const submit = () => {
@@ -51,8 +50,12 @@ export function ForkPanel({ turns, busy, isDriver, onAsk, onShare }: ForkPanelPr
                 {turn.streaming ? <span className="caret" /> : null}
               </div>
               {turn.role === 'assistant' && !turn.streaming && turn.content ? (
-                <button type="button" className="ghost" onClick={() => onShare(turn.content)}>
-                  {isDriver ? 'Ask the room this' : 'Add to queue'}
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={() => onShare(turns[index - 1]?.content ?? '', turn.content)}
+                >
+                  Show the room
                 </button>
               ) : null}
             </div>

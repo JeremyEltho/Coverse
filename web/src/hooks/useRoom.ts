@@ -40,6 +40,7 @@ function readMessage(entry: Y.Map<unknown>): ThreadMessage {
     body: (entry.get('body') as Y.Text | undefined)?.toString() ?? '',
     at: Number(entry.get('at') ?? 0),
     done: Boolean(entry.get('done')),
+    shared: Boolean(entry.get('shared')),
     reactions,
   }
 }
@@ -258,13 +259,18 @@ export function useRoom(code: string, me: JoinResult) {
     [forkTurns],
   )
 
-  const shareFork = useCallback(
-    (content: string) => {
-      if (isDriver) send(content)
-      else addToQueue(content)
-    },
-    [isDriver, send, addToQueue],
-  )
+  /**
+   * Publish a private exchange to the room.
+   *
+   * This shows everyone what was already said. It deliberately does not send
+   * the answer as a new prompt: doing that made the assistant reply to its own
+   * words, which is how this was originally broken.
+   */
+  const shareFork = useCallback((question: string, answer: string) => {
+    if (answer.trim()) {
+      controlRef.current?.send({ type: 'share_fork', question, answer })
+    }
+  }, [])
 
   return {
     session,
