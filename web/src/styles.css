@@ -1,275 +1,208 @@
 /* ===========================================================================
    Coverse
    ---------------------------------------------------------------------------
-   A liquid glass system, built in CSS rather than with a displacement library.
+   Retro system software: early GUI chrome, brought forward far enough to be
+   usable. Hard borders, solid offset shadows, real window furniture, and a
+   dithered desktop behind it all.
 
-   Apple's material is not really about warping what is behind it. It is a
-   translucent layer that blurs and over-saturates its backdrop, catches a
-   specular highlight along its top edge, and floats on a soft shadow. Those
-   read as glass at any size, stay crisp under text, and cost one compositor
-   layer instead of an SVG filter per element, which matters when the thread is
-   streaming tokens.
-
-   Every surface is built from the same three parts:
-     1. a translucent fill over a blurred, saturated backdrop
-     2. a hairline stroke that brightens towards the top edge (the specular)
-     3. an inset highlight just inside that stroke, giving the glass thickness
+   Every choice here is the opposite of the soft, blurred, endlessly rounded
+   default: edges commit, shadows do not blur, and nothing floats.
    =========================================================================== */
 
 :root {
-  /* Backdrop ------------------------------------------------------------- */
-  --ink: #08080a;
-  /* Desaturated steel, close enough to neutral that nothing reads as tinted,
-     but with enough luminance variation that the blur has something to work
-     with. A flat backdrop makes frosted glass look like grey plastic. */
-  --bloom-1: #6b7280;
-  --bloom-2: #4b5159;
-  --bloom-3: #7a818c;
+  /* Desktop and paper --------------------------------------------------- */
+  --desk-a: #b9b4ab;
+  --desk-b: #aaa49a;
+  --paper: #fbfaf7;
+  --paper-sunk: #efece5;
 
-  /* Glass ---------------------------------------------------------------- */
-  --glass-fill: rgba(255, 255, 255, 0.07);
-  --glass-fill-strong: rgba(255, 255, 255, 0.105);
-  --glass-stroke: rgba(255, 255, 255, 0.12);
-  --glass-stroke-lit: rgba(255, 255, 255, 0.34);
-  --glass-blur: blur(28px) saturate(175%);
-  --glass-blur-heavy: blur(44px) saturate(185%);
-  --glass-shadow: 0 10px 34px rgba(0, 0, 0, 0.42), 0 2px 8px rgba(0, 0, 0, 0.3);
+  /* Ink ----------------------------------------------------------------- */
+  --ink: #16150f;
+  --ink-soft: #55524a;
+  --ink-faint: #8a867c;
 
-  /* Type ----------------------------------------------------------------- */
-  --text: rgba(255, 255, 255, 0.94);
-  --text-dim: rgba(255, 255, 255, 0.62);
-  --text-faint: rgba(255, 255, 255, 0.4);
+  /* One accent, used only where the room needs your eye. */
+  --accent: #d9480f;
+  --accent-soft: #ffe3d3;
 
-  /* Accent --------------------------------------------------------------- */
-  --accent: #e8e9ec;
-  --accent-deep: #c9ccd2;
-  --ai: rgba(255, 255, 255, 0.78);
-  --ai-deep: rgba(255, 255, 255, 0.4);
-  --danger: #ff8f8f;
+  /* Structure ------------------------------------------------------------ */
+  --line: 2px solid var(--ink);
+  --hair: 1px solid var(--ink);
+  --drop: 3px 3px 0 var(--ink);
+  --drop-sm: 2px 2px 0 var(--ink);
 
-  /* Geometry. Large radii, because glass at small radii reads as plastic. */
-  --r-sm: 12px;
-  --r-md: 18px;
-  --r-lg: 26px;
-  --r-pill: 999px;
-
-  color-scheme: dark;
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', ui-sans-serif,
-    system-ui, 'Segoe UI', Roboto, sans-serif;
-  color: var(--text);
+  color-scheme: light;
+  font-family: 'Space Grotesk Variable', 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+  color: var(--ink);
   font-synthesis-weight: none;
-  text-rendering: optimizeLegibility;
 }
 
 * { box-sizing: border-box; }
 
 body {
   margin: 0;
-  background: var(--ink);
+  overflow: hidden;
   -webkit-font-smoothing: antialiased;
-  overflow: hidden;
+  /* A 2px checkerboard, which is what a 50% dither actually was. */
+  background-color: var(--desk-a);
+  background-image:
+    linear-gradient(45deg, var(--desk-b) 25%, transparent 25%, transparent 75%, var(--desk-b) 75%),
+    linear-gradient(45deg, var(--desk-b) 25%, transparent 25%, transparent 75%, var(--desk-b) 75%);
+  background-size: 4px 4px;
+  background-position: 0 0, 2px 2px;
 }
 
-/* --- the backdrop the glass refracts --------------------------------------
-   Three slow, offset blooms. They drift on long, mismatched durations so the
-   light behind the glass never quite repeats, which is what stops a static
-   blur from looking like frosted plastic. */
-
-.backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  background: var(--ink);
-  overflow: hidden;
+.mono, .room-code, .model-trigger, .badge, kbd {
+  font-family: 'Space Mono', ui-monospace, SFMono-Regular, monospace;
 }
 
-.backdrop::before,
-.backdrop::after,
-.backdrop > span {
-  content: '';
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(90px);
-  will-change: transform;
+/* --- window furniture ------------------------------------------------------
+   A pane is a window: hard border, solid shadow, striped title bar. The stripes
+   are the single most recognisable piece of early GUI chrome, so they do most
+   of the work of placing this design. */
+
+.window {
+  background: var(--paper);
+  border: var(--line);
+  box-shadow: var(--drop);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
-.backdrop::before {
-  width: 72vw; height: 72vw;
-  top: -24vw; left: -14vw;
-  background: radial-gradient(circle, var(--bloom-1) 0%, transparent 68%);
-  opacity: 0.85;
-  animation: drift-a 34s ease-in-out infinite alternate;
-}
-
-.backdrop::after {
-  width: 66vw; height: 66vw;
-  bottom: -26vw; right: -12vw;
-  background: radial-gradient(circle, var(--bloom-2) 0%, transparent 66%);
-  opacity: 0.8;
-  animation: drift-b 43s ease-in-out infinite alternate;
-}
-
-.backdrop > span {
-  width: 56vw; height: 56vw;
-  top: 22%; left: 38%;
-  background: radial-gradient(circle, var(--bloom-3) 0%, transparent 70%);
-  opacity: 0.7;
-  animation: drift-c 51s ease-in-out infinite alternate;
-}
-
-@keyframes drift-a {
-  from { transform: translate3d(0, 0, 0) scale(1); }
-  to   { transform: translate3d(8vw, 6vh, 0) scale(1.15); }
-}
-@keyframes drift-b {
-  from { transform: translate3d(0, 0, 0) scale(1.1); }
-  to   { transform: translate3d(-10vw, -7vh, 0) scale(1); }
-}
-@keyframes drift-c {
-  from { transform: translate3d(0, 0, 0) scale(0.9); }
-  to   { transform: translate3d(-6vw, 8vh, 0) scale(1.2); }
-}
-
-/* Someone who asked for less motion should not get a lava lamp. */
-@media (prefers-reduced-motion: reduce) {
-  .backdrop::before,
-  .backdrop::after,
-  .backdrop > span { animation: none; }
-}
-
-/* --- the glass material ---------------------------------------------------
-   `.glass` is the whole material in one class. The specular edge is a masked
-   gradient border rather than a plain 1px stroke, so the top catches light and
-   the bottom falls away, the way a real bevel would. */
-
-.glass {
-  position: relative;
-  background: var(--glass-fill);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
-  box-shadow: var(--glass-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.09);
-  border-radius: var(--r-lg);
-}
-
-.glass::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  padding: 1px;
-  background: linear-gradient(
-    160deg,
-    var(--glass-stroke-lit) 0%,
-    var(--glass-stroke) 34%,
-    rgba(255, 255, 255, 0.04) 62%,
-    rgba(255, 255, 255, 0.1) 100%
+.title-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0.45rem;
+  border-bottom: var(--line);
+  background: var(--paper);
+  /* Six hairlines, the way a title bar signalled an active window. */
+  background-image: repeating-linear-gradient(
+    to bottom,
+    var(--ink) 0 1px,
+    transparent 1px 4px
   );
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  mask-composite: exclude;
-  pointer-events: none;
+  background-size: 100% 100%;
+  flex-shrink: 0;
+  min-height: 22px;
 }
 
-.glass-strong {
-  background: var(--glass-fill-strong);
-  backdrop-filter: var(--glass-blur-heavy);
-  -webkit-backdrop-filter: var(--glass-blur-heavy);
+.title-bar-label {
+  background: var(--paper);
+  padding: 0 0.5rem;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
-/* --- controls ------------------------------------------------------------- */
+/* A non-functional close box, because the chrome reads as chrome without it. */
+.title-bar-box {
+  width: 11px;
+  height: 11px;
+  border: var(--hair);
+  background: var(--paper);
+  flex-shrink: 0;
+}
+
+.title-bar-spacer { flex: 1; }
+
+/* --- controls --------------------------------------------------------------
+   Buttons press: the shadow collapses and the button moves into it, which is
+   how physical a 1990s button felt. */
 
 button {
   font: inherit;
-  font-weight: 500;
-  padding: 0.5rem 1rem;
-  border: none;
-  border-radius: var(--r-pill);
-  background: linear-gradient(180deg, var(--accent) 0%, var(--accent-deep) 100%);
-  color: #15161a;
+  font-weight: 600;
+  font-size: 0.82rem;
+  padding: 0.32rem 0.8rem;
+  border: var(--line);
+  border-radius: 0;
+  background: var(--paper);
+  color: var(--ink);
   cursor: pointer;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.6);
-  transition: transform 0.14s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.14s ease,
-    filter 0.14s ease;
+  box-shadow: var(--drop-sm);
+  transition: none;
 }
-button:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.08); }
-button:active:not(:disabled) { transform: translateY(0) scale(0.985); }
-button:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
-
-button.secondary {
-  background: var(--glass-fill-strong);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
-  color: var(--text);
-  box-shadow: inset 0 0 0 1px var(--glass-stroke), inset 0 1px 0 rgba(255, 255, 255, 0.12);
-}
-button.secondary:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.13);
-  filter: none;
-}
-
-button.ghost {
-  background: transparent;
-  color: var(--text-dim);
-  padding: 0.25rem 0.6rem;
-  font-size: 0.8rem;
+button:hover:not(:disabled) { background: var(--paper-sunk); }
+button:active:not(:disabled) {
+  transform: translate(2px, 2px);
   box-shadow: none;
 }
-button.ghost:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.09);
-  color: var(--text);
-  transform: none;
-  filter: none;
+button:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
+
+/* The default action, drawn the way a default button always was: heavier. */
+button.primary,
+.composer-actions button:not(.secondary):not(.ghost),
+.landing-actions > button:first-child,
+form button[type='submit'] {
+  background: var(--ink);
+  color: var(--paper);
+  box-shadow: var(--drop-sm);
 }
+button.primary:hover:not(:disabled),
+.composer-actions button:not(.secondary):not(.ghost):hover:not(:disabled),
+.landing-actions > button:first-child:hover:not(:disabled),
+form button[type='submit']:hover:not(:disabled) { background: #2e2c24; }
+
+button.secondary { background: var(--paper); }
+
+button.ghost {
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  color: var(--ink-soft);
+  padding: 0.18rem 0.4rem;
+  font-size: 0.76rem;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+button.ghost:hover:not(:disabled) { background: var(--accent-soft); color: var(--ink); }
 
 input, textarea {
   font: inherit;
+  font-size: 0.88rem;
   width: 100%;
-  padding: 0.6rem 0.85rem;
-  border: none;
-  border-radius: var(--r-md);
-  background: rgba(255, 255, 255, 0.05);
-  box-shadow: inset 0 0 0 1px var(--glass-stroke);
-  color: var(--text);
-  transition: box-shadow 0.16s ease, background 0.16s ease;
+  padding: 0.4rem 0.55rem;
+  border: var(--line);
+  border-radius: 0;
+  background: var(--paper);
+  color: var(--ink);
+  /* Sunk, rather than glowing. */
+  box-shadow: inset 2px 2px 0 rgba(0, 0, 0, 0.09);
 }
-input::placeholder, textarea::placeholder { color: var(--text-faint); }
+input::placeholder, textarea::placeholder { color: var(--ink-faint); }
 input:focus, textarea:focus {
-  outline: none;
-  background: rgba(255, 255, 255, 0.08);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.32), 0 0 0 4px rgba(255, 255, 255, 0.06);
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
-.muted { color: var(--text-dim); }
-.hint { font-size: 0.78rem; color: var(--text-faint); line-height: 1.55; }
+.muted { color: var(--ink-soft); }
+.hint { font-size: 0.76rem; color: var(--ink-soft); line-height: 1.5; }
 
 .error-banner {
-  background: rgba(255, 90, 90, 0.12);
-  box-shadow: inset 0 0 0 1px rgba(255, 128, 128, 0.3);
-  color: var(--danger);
-  padding: 0.6rem 0.8rem;
-  border-radius: var(--r-sm);
-  font-size: 0.85rem;
+  background: var(--accent-soft);
+  border: var(--line);
+  color: var(--ink);
+  padding: 0.45rem 0.6rem;
+  font-size: 0.82rem;
+  font-weight: 500;
 }
 
 .toast {
   position: fixed;
-  bottom: 1.5rem; left: 50%;
+  bottom: 1.25rem; left: 50%;
   transform: translateX(-50%);
-  padding: 0.6rem 1.1rem;
-  border-radius: var(--r-pill);
-  font-size: 0.85rem;
-  color: var(--text);
-  background: rgba(20, 20, 30, 0.7);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
-  box-shadow: var(--glass-shadow), inset 0 0 0 1px var(--glass-stroke);
+  background: var(--ink);
+  color: var(--paper);
+  border: var(--line);
+  box-shadow: var(--drop);
+  padding: 0.45rem 0.9rem;
+  font-size: 0.82rem;
+  font-weight: 600;
   z-index: 50;
-  animation: rise 0.24s cubic-bezier(0.22, 1, 0.36, 1);
-}
-@keyframes rise {
-  from { opacity: 0; transform: translate(-50%, 8px); }
-  to   { opacity: 1; transform: translate(-50%, 0); }
 }
 
 /* ===========================================================================
@@ -284,304 +217,328 @@ input:focus, textarea:focus {
 }
 
 .landing-card {
-  width: min(27rem, 100%);
-  padding: 2.25rem;
+  width: min(25rem, 100%);
+  background: var(--paper);
+  border: var(--line);
+  box-shadow: var(--drop);
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
-  animation: card-in 0.45s cubic-bezier(0.22, 1, 0.36, 1);
 }
-@keyframes card-in {
-  from { opacity: 0; transform: translateY(14px) scale(0.985); }
-  to   { opacity: 1; transform: none; }
+
+/* The card's own title bar, so the entry point reads as a dialog. */
+.landing-card::before {
+  content: '';
+  display: block;
+  height: 15px;
+  border-bottom: var(--line);
+  background-image: repeating-linear-gradient(
+    to bottom, var(--ink) 0 1px, transparent 1px 4px);
 }
+
+.landing-card > * { margin: 0 1.4rem; }
+.landing-card > *:first-of-type { margin-top: 1.2rem; }
+.landing-card > *:last-child { margin-bottom: 1.4rem; }
 
 .landing-card h1 {
-  margin: 0;
-  font-size: 2rem;
-  font-weight: 600;
-  letter-spacing: -0.035em;
-  background: linear-gradient(180deg, #fff 30%, rgba(255, 255, 255, 0.62) 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  font-size: 1.9rem;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  margin-bottom: 0.5rem;
 }
-.landing-card p { margin: 0; line-height: 1.65; color: var(--text-dim); }
+.landing-card p { line-height: 1.55; font-size: 0.88rem; margin-bottom: 0.9rem; }
 .landing-card label {
-  display: flex; flex-direction: column; gap: 0.4rem;
-  font-size: 0.82rem; color: var(--text-dim);
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin-bottom: 0.9rem;
 }
 
-.landing-actions { display: flex; flex-direction: column; gap: 0.7rem; }
+.landing-actions { display: flex; flex-direction: column; gap: 0.6rem; margin-bottom: 0.9rem; }
 .landing-lock {
   flex-direction: row !important;
-  align-items: center; gap: 0.5rem;
+  align-items: center;
+  gap: 0.45rem;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.8rem;
+  font-weight: 500;
   cursor: pointer;
 }
-.landing-lock input { width: auto; accent-color: var(--accent); }
+.landing-lock input { width: auto; accent-color: var(--accent); box-shadow: none; }
 
-.landing-join { display: flex; gap: 0.5rem; }
+/* A hard rule instead of whitespace, so the two ways in are actually divided. */
+.landing-join {
+  display: flex;
+  gap: 0.5rem;
+  padding-top: 0.9rem;
+  border-top: var(--hair);
+  margin-bottom: 0.9rem;
+}
 .landing-join input {
+  font-family: 'Space Mono', monospace;
   text-transform: uppercase;
-  letter-spacing: 0.3em;
+  letter-spacing: 0.26em;
   text-align: center;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  /* The indent keeps a letter-spaced value optically centred, since the
-     trailing space after the last character counts towards the width. */
-  text-indent: 0.3em;
+  font-weight: 700;
+  text-indent: 0.26em;
 }
-/* Tracking that suits a six character code makes a sentence overflow. */
-.landing-join input::placeholder {
-  letter-spacing: normal;
-  text-transform: none;
-  text-indent: 0;
-  font-weight: 400;
-}
+.landing-join input::placeholder { letter-spacing: normal; text-indent: 0; font-weight: 400; }
 .landing-join button { flex-shrink: 0; }
 
 /* ===========================================================================
-   Room shell
+   Room: a desktop of windows
    =========================================================================== */
 
 .page {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  padding: 0.75rem;
-  gap: 0.75rem;
+  padding: 0.6rem;
+  gap: 0.6rem;
 }
 
-/* The bar floats inset from the window rather than spanning it, so the
-   backdrop stays visible around every pane and the glass has an edge. */
+/* The menu bar, pinned to the top of the desktop like a system bar. */
 .app-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 0.55rem 0.75rem 0.55rem 1.1rem;
-  border-radius: var(--r-lg);
+  padding: 0.25rem 0.5rem;
+  background: var(--paper);
+  border: var(--line);
+  box-shadow: var(--drop-sm);
   flex-shrink: 0;
-  /* Above the panes below it, so anything the header opens is not painted
-     under the rail and cannot have its clicks swallowed by it. */
   z-index: 30;
 }
-.app-header-left { display: flex; align-items: center; gap: 1rem; }
+.app-header-left { display: flex; align-items: center; gap: 0.9rem; }
 
 .brand {
-  font-weight: 600;
+  font-weight: 700;
+  font-size: 0.95rem;
   letter-spacing: -0.02em;
-  font-size: 1.02rem;
-}
-
-.model-label {
-  font-size: 0.68rem;
-  color: var(--text-faint);
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
+  padding-right: 0.9rem;
+  border-right: var(--hair);
 }
 
 .room-code {
-  background: rgba(255, 255, 255, 0.07);
-  box-shadow: inset 0 0 0 1px var(--glass-stroke);
-  color: var(--text);
-  font-weight: 600;
-  letter-spacing: 0.22em;
-  font-size: 0.85rem;
+  background: var(--paper);
+  border: var(--hair);
+  box-shadow: none;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  padding: 0.15rem 0.5rem;
   display: inline-flex;
   align-items: baseline;
-  gap: 0.6rem;
-  padding: 0.35rem 0.85rem;
+  gap: 0.5rem;
 }
-.room-code:hover { background: rgba(255, 255, 255, 0.12); filter: none; }
+.room-code:hover { background: var(--accent-soft); }
 .room-code span {
-  font-size: 0.62rem;
+  font-size: 0.6rem;
   letter-spacing: 0.04em;
-  font-weight: 500;
-  color: var(--text-faint);
+  font-weight: 400;
+  color: var(--ink-faint);
   text-transform: uppercase;
 }
 
-/* --- mic bar -------------------------------------------------------------- */
+/* --- the shelf: who is here -----------------------------------------------
+   Sprites stand on a rule rather than floating in a bar, so the room reads as
+   a row of people at a counter. */
 
 .mic {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 0.9rem;
   flex-wrap: wrap;
-  padding: 0.5rem 1rem;
-  border-radius: var(--r-lg);
+  padding: 0.55rem 0.7rem 0;
+  background: var(--paper);
+  border: var(--line);
+  box-shadow: var(--drop-sm);
   flex-shrink: 0;
+  min-height: 3.1rem;
 }
-.mic-presence { display: flex; align-items: center; gap: 0.7rem; }
+.mic-presence { display: flex; align-items: flex-end; gap: 0.6rem; flex: 1; }
 
-.mic-driver { font-size: 0.84rem; color: var(--text-dim); }
-.mic-driver strong { color: var(--text); font-weight: 600; }
+.mic-driver {
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  padding-bottom: 0.5rem;
+}
+.mic-driver strong { color: var(--ink); font-weight: 700; }
 
 .dot {
-  width: 7px; height: 7px;
-  border-radius: 50%;
-  background: var(--text-faint);
-  box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.5);
+  width: 8px; height: 8px;
+  border: var(--hair);
+  background: var(--paper);
+  margin-bottom: 0.55rem;
+  flex-shrink: 0;
 }
-.dot.is-online {
-  background: #34d399;
-  animation: pulse 2.6s ease-out infinite;
+.dot.is-online { background: var(--accent); box-shadow: inset 0 0 0 1px var(--paper); }
+
+.roster { display: flex; align-items: flex-end; gap: 0.2rem; }
+
+.roster-slot {
+  position: relative;
+  display: grid;
+  place-items: end center;
+  padding: 0.2rem 0.3rem 0.3rem;
+  /* The shelf they stand on. */
+  border-bottom: 3px solid var(--ink);
 }
-@keyframes pulse {
-  0%   { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.45); }
-  70%  { box-shadow: 0 0 0 7px rgba(52, 211, 153, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0); }
+.roster-slot.is-holding {
+  background: var(--accent-soft);
+  border-bottom-color: var(--accent);
+}
+.roster-slot.is-holding::after {
+  content: '';
+  position: absolute;
+  bottom: -3px; left: 0; right: 0;
+  height: 3px;
+  background: var(--accent);
+}
+.roster-slot.is-ai { margin-left: 0.5rem; border-bottom-style: dashed; }
+
+.mic-glyph {
+  position: absolute;
+  right: -1px; top: 0;
+  width: 5px; height: 9px;
+  background: var(--ink);
+}
+.mic-glyph::after {
+  content: '';
+  position: absolute;
+  left: 1px; bottom: -4px;
+  width: 3px; height: 4px;
+  background: var(--ink);
 }
 
-.avatars { display: flex; }
-.avatar {
-  width: 1.75rem; height: 1.75rem;
-  border-radius: 50%;
-  display: grid; place-items: center;
-  color: #fff;
-  font-size: 0.72rem;
-  font-weight: 650;
-  margin-left: -0.45rem;
-  box-shadow: 0 0 0 2px rgba(12, 12, 20, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.28);
-  transition: transform 0.16s cubic-bezier(0.22, 1, 0.36, 1);
-}
-.avatar:hover { transform: translateY(-2px) scale(1.06); z-index: 2; }
-.avatar.is-ai {
-  background: rgba(255, 255, 255, 0.16) !important;
-  box-shadow: 0 0 0 2px rgba(12, 12, 20, 0.75), inset 0 0 0 1px rgba(255, 255, 255, 0.4);
-  color: rgba(255, 255, 255, 0.9);
-}
-
-.mic-requests { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-left: auto; }
+.mic-requests { display: flex; flex-wrap: wrap; gap: 0.4rem; padding-bottom: 0.4rem; }
 .mic-request {
-  display: inline-flex; align-items: center; gap: 0.55rem;
-  background: rgba(255, 255, 255, 0.1);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
-  border-radius: var(--r-pill);
-  padding: 0.2rem 0.25rem 0.2rem 0.8rem;
-  font-size: 0.8rem;
-  color: var(--text);
-  animation: rise 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: var(--accent-soft);
+  border: var(--hair);
+  padding: 0.12rem 0.15rem 0.12rem 0.45rem;
+  font-size: 0.76rem;
+  font-weight: 500;
 }
-.mic-request button { padding: 0.22rem 0.7rem; font-size: 0.76rem; }
+.mic-request button { padding: 0.1rem 0.45rem; font-size: 0.72rem; box-shadow: none; }
+
+/* --- the two windows ------------------------------------------------------- */
+
+.room-body { flex: 1; min-height: 0; display: flex; gap: 0.6rem; }
+
+.room-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--paper);
+  border: var(--line);
+  box-shadow: var(--drop);
+}
 
 /* ===========================================================================
    Thread
    =========================================================================== */
 
-.room-body { flex: 1; min-height: 0; display: flex; gap: 0.75rem; }
-.room-main {
-  flex: 1; min-width: 0;
-  display: flex; flex-direction: column;
-  min-height: 0;
-}
-
 .thread {
   flex: 1;
   overflow-y: auto;
-  padding: 1.75rem 1.5rem 1rem;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
-}
-.thread::-webkit-scrollbar { width: 10px; }
-.thread::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.14);
-  border-radius: 99px;
-  border: 3px solid transparent;
-  background-clip: content-box;
+  padding: 1.1rem 1.2rem 0.8rem;
 }
 .thread.is-empty { display: grid; place-items: center; }
 
-.thread-empty { max-width: 26rem; text-align: center; }
+.thread-empty { max-width: 24rem; text-align: center; }
 .thread-empty h2 {
-  margin: 0 0 0.5rem;
-  font-size: 1.05rem;
-  font-weight: 600;
-  letter-spacing: -0.015em;
+  margin: 0 0 0.4rem;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
-.thread-empty p { margin: 0; line-height: 1.7; font-size: 0.9rem; color: var(--text-dim); }
+.thread-empty p { margin: 0; line-height: 1.6; font-size: 0.85rem; color: var(--ink-soft); }
 
-.turn {
-  max-width: 45rem;
-  margin: 0 auto 1.6rem;
-  animation: turn-in 0.3s cubic-bezier(0.22, 1, 0.36, 1);
-}
-@keyframes turn-in {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: none; }
-}
+.turn { max-width: 42rem; margin: 0 auto 1.3rem; }
 
-.turn header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem; }
+.turn header {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.35rem;
+  padding-bottom: 0.25rem;
+  /* A rule under the author, so turns are divided by structure not by air. */
+  border-bottom: var(--hair);
+}
 .turn-author {
   font-size: 0.68rem;
-  font-weight: 650;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.07em;
-  color: var(--text-faint);
+  letter-spacing: 0.1em;
 }
-.turn.is-assistant .turn-author { color: var(--ai); }
+.turn.is-assistant .turn-author { color: var(--accent); }
 
 .turn-shared, .turn-pinned {
-  font-size: 0.62rem;
-  padding: 0.1rem 0.42rem;
-  border-radius: var(--r-pill);
-  letter-spacing: 0.02em;
+  font-family: 'Space Mono', monospace;
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border: var(--hair);
+  padding: 0 0.25rem;
 }
-.turn-shared,
-.turn-pinned {
-  color: var(--text-dim);
-  background: rgba(255, 255, 255, 0.1);
-}
+.turn-pinned { background: var(--ink); color: var(--paper); border-color: var(--ink); }
 
-.turn-body { line-height: 1.72; font-size: 0.97rem; }
+.turn-body { line-height: 1.62; font-size: 0.92rem; }
 
-/* A human turn is a glass bubble; the assistant speaks on the backdrop itself.
-   Putting long generated answers inside a panel makes them feel boxed in, and
-   the room's own words are what benefit from being visually held. */
+/* A human turn sits in a box; the assistant speaks straight onto the paper, so
+   the room's own words are the ones that look held. */
 .turn.is-user .turn-body {
   display: inline-block;
   max-width: 100%;
-  padding: 0.7rem 1rem;
-  border-radius: var(--r-md);
-  background: var(--glass-fill-strong);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
-  box-shadow: inset 0 0 0 1px var(--glass-stroke), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  padding: 0.5rem 0.7rem;
+  background: var(--paper-sunk);
+  border: var(--hair);
   white-space: pre-wrap;
 }
-.turn.is-system .turn-body { color: var(--danger); font-size: 0.88rem; }
+.turn.is-system .turn-body { color: var(--accent); font-weight: 500; }
 
 .turn-actions {
-  display: flex; gap: 0.35rem;
-  margin-top: 0.55rem;
+  display: flex;
+  gap: 0.3rem;
+  margin-top: 0.5rem;
   opacity: 0;
-  transition: opacity 0.16s ease;
+  transition: opacity 0.1s linear;
 }
 .turn:hover .turn-actions, .turn-actions:focus-within { opacity: 1; }
 
 .reaction {
-  background: rgba(255, 255, 255, 0.05);
-  box-shadow: inset 0 0 0 1px var(--glass-stroke);
-  color: var(--text-dim);
-  padding: 0.15rem 0.55rem;
-  font-size: 0.78rem;
-  display: inline-flex; gap: 0.3rem; align-items: center;
+  background: var(--paper);
+  border: var(--hair);
+  box-shadow: none;
+  color: var(--ink-soft);
+  padding: 0.05rem 0.4rem;
+  font-size: 0.74rem;
+  display: inline-flex;
+  gap: 0.25rem;
+  align-items: center;
 }
-.reaction:hover { background: rgba(255, 255, 255, 0.11); filter: none; transform: none; }
-.reaction.is-mine {
-  background: rgba(255, 255, 255, 0.16);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.34);
-  color: var(--text);
-}
+.reaction:hover { background: var(--accent-soft); }
+.reaction.is-mine { background: var(--ink); color: var(--paper); border-color: var(--ink); }
 
+/* A block cursor, which is what a terminal caret always was. */
 .caret {
   display: inline-block;
-  width: 2px; height: 1.05em;
-  background: rgba(255, 255, 255, 0.85);
-  margin-left: 3px;
+  width: 0.5em; height: 1.05em;
+  background: var(--accent);
+  margin-left: 2px;
   vertical-align: text-bottom;
-  border-radius: 2px;
   animation: blink 1.05s steps(2, start) infinite;
 }
 @keyframes blink { to { visibility: hidden; } }
@@ -590,51 +547,37 @@ input:focus, textarea:focus {
    Composer
    =========================================================================== */
 
-.composer {
-  padding: 0.85rem 1.5rem 1rem;
-  flex-shrink: 0;
-}
+.composer { padding: 0.6rem 1.2rem 0.9rem; flex-shrink: 0; border-top: var(--line); }
 
-.composer-shell {
-  max-width: 45rem;
-  margin: 0 auto;
-  border-radius: var(--r-lg);
-  padding: 0.75rem 0.85rem 0.6rem;
-  transition: box-shadow 0.2s ease;
-}
-.composer-shell:focus-within {
-  box-shadow: var(--glass-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.16),
-    0 0 0 1px rgba(255, 255, 255, 0.22);
-}
+.composer-shell { max-width: 42rem; margin: 0 auto; }
 
 .composer textarea {
-  background: transparent;
-  box-shadow: none;
-  padding: 0.3rem 0.4rem;
   resize: none;
-  line-height: 1.6;
-  min-height: 3.2rem;
-  max-height: 40vh;
+  line-height: 1.55;
+  min-height: 3.4rem;
+  max-height: 38vh;
+  font-size: 0.9rem;
 }
-.composer textarea:focus { background: transparent; box-shadow: none; }
 
 .composer-actions {
+  max-width: 42rem;
+  margin: 0.45rem auto 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.1rem 0.3rem 0;
+  gap: 0.7rem;
 }
-.composer-hint { font-size: 0.74rem; color: var(--text-faint); }
-.composer-hint strong { color: var(--text-dim); font-weight: 600; }
+.composer-hint { font-size: 0.72rem; color: var(--ink-soft); }
+.composer-hint strong { font-weight: 700; color: var(--ink); }
 
-/* Whoever is typing into the shared draft, shown as a live hint. */
 .composer-typing {
-  font-size: 0.72rem;
-  color: var(--ai);
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--ink);
+  min-height: 1.2rem;
 }
 
 /* ===========================================================================
@@ -642,236 +585,132 @@ input:focus, textarea:focus {
    =========================================================================== */
 
 .rail {
-  width: 21.5rem;
+  width: 20.5rem;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   min-height: 0;
-  border-radius: var(--r-lg);
-  overflow: hidden;
+  background: var(--paper);
+  border: var(--line);
+  box-shadow: var(--drop);
 }
 
+/* Tabs as folder tabs: the active one joins the panel below it. */
 .rail-tabs {
   display: flex;
-  padding: 0.4rem;
-  gap: 0.2rem;
+  gap: 0;
+  padding: 0.35rem 0.35rem 0;
+  border-bottom: var(--line);
   flex-shrink: 0;
+  background-image: repeating-linear-gradient(
+    to bottom, var(--ink) 0 1px, transparent 1px 4px);
+  background-size: 100% 100%;
 }
 .rail-tabs button {
   flex: 1;
-  background: transparent;
-  color: var(--text-faint);
-  border-radius: var(--r-sm);
-  padding: 0.45rem 0.3rem;
-  font-size: 0.76rem;
-  font-weight: 550;
+  border: var(--hair);
+  border-bottom: none;
   box-shadow: none;
-  white-space: nowrap;
+  background: var(--paper-sunk);
+  color: var(--ink-soft);
+  padding: 0.3rem 0.2rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.3rem;
+  gap: 0.25rem;
+  margin-bottom: -2px;
+  white-space: nowrap;
 }
-.rail-tabs button:hover { background: rgba(255, 255, 255, 0.06); color: var(--text-dim); transform: none; filter: none; }
+.rail-tabs button:active { transform: none; }
 .rail-tabs button.is-active {
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--text);
-  box-shadow: inset 0 0 0 1px var(--glass-stroke), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  background: var(--paper);
+  color: var(--ink);
+  border-width: 2px;
+  border-bottom: 2px solid var(--paper);
+  position: relative;
+  z-index: 1;
 }
 
 .badge {
-  background: rgba(255, 255, 255, 0.14);
-  color: var(--text-dim);
-  border-radius: var(--r-pill);
-  padding: 0 0.36rem;
-  font-size: 0.64rem;
-  font-weight: 650;
-  font-variant-numeric: tabular-nums;
+  background: var(--ink);
+  color: var(--paper);
+  padding: 0 0.25rem;
+  font-size: 0.6rem;
+  font-weight: 700;
 }
-.rail-tabs button.is-active .badge {
-  background: rgba(255, 255, 255, 0.22);
-  color: var(--text);
-}
+.rail-tabs button.is-active .badge { background: var(--accent); }
 
 .rail-body { flex: 1; min-height: 0; display: flex; }
 .panel { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 
 .panel-note {
   margin: 0;
-  padding: 0.55rem 0.9rem 0.7rem;
-  font-size: 0.71rem;
-  color: var(--text-faint);
-  line-height: 1.5;
+  padding: 0.45rem 0.7rem;
+  font-size: 0.68rem;
+  color: var(--ink-soft);
+  line-height: 1.45;
+  border-bottom: var(--hair);
+  background: var(--paper-sunk);
 }
 
 .panel-scroll {
   flex: 1;
   overflow-y: auto;
-  padding: 0 0.9rem 0.8rem;
+  padding: 0.6rem 0.7rem;
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+  gap: 0.5rem;
 }
-.panel-scroll::-webkit-scrollbar { width: 8px; }
-.panel-scroll::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.13);
-  border-radius: 99px;
-  border: 2px solid transparent;
-  background-clip: content-box;
-}
-.panel-empty { color: var(--text-faint); font-size: 0.82rem; line-height: 1.6; margin: 0; }
+.panel-empty { color: var(--ink-faint); font-size: 0.8rem; line-height: 1.55; margin: 0; }
 
-.panel-composer { padding: 0.6rem 0.75rem 0.75rem; flex-shrink: 0; }
-.panel-composer.is-buttons { display: flex; gap: 0.5rem; }
-.panel-composer.is-buttons button { flex: 1; font-size: 0.78rem; padding: 0.45rem 0.5rem; }
-
-/* --- side chat ------------------------------------------------------------ */
+.panel-composer { padding: 0.5rem 0.6rem; border-top: var(--hair); flex-shrink: 0; }
+.panel-composer.is-buttons { display: flex; gap: 0.4rem; }
+.panel-composer.is-buttons button { flex: 1; font-size: 0.74rem; padding: 0.3rem 0.4rem; }
 
 .side-line {
-  font-size: 0.85rem;
-  line-height: 1.55;
+  font-size: 0.82rem;
+  line-height: 1.5;
   display: flex;
   flex-wrap: wrap;
-  gap: 0.4rem;
+  gap: 0.35rem;
   align-items: baseline;
-  padding: 0.4rem 0.55rem;
-  border-radius: var(--r-sm);
-  transition: background 0.14s ease;
+  padding: 0.25rem 0;
+  border-bottom: 1px dotted var(--ink-faint);
 }
-.side-line:hover { background: rgba(255, 255, 255, 0.05); }
-.side-author { font-weight: 650; color: var(--text-dim); font-size: 0.74rem; }
-.side-body { flex: 1; min-width: 0; color: var(--text); }
-.side-actions { opacity: 0; transition: opacity 0.14s ease; }
-.side-line:hover .side-actions { opacity: 1; }
-
-/* --- cards ---------------------------------------------------------------- */
+.side-author { font-weight: 700; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; }
+.side-body { flex: 1; min-width: 0; }
 
 .queue-card, .pin-card {
-  border-radius: var(--r-md);
-  padding: 0.65rem 0.75rem;
-  font-size: 0.85rem;
-  background: rgba(255, 255, 255, 0.045);
-  box-shadow: inset 0 0 0 1px var(--glass-stroke);
-  animation: turn-in 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+  padding: 0.5rem 0.6rem;
+  font-size: 0.82rem;
+  background: var(--paper);
+  border: var(--hair);
 }
 .queue-card header, .pin-card header {
-  font-size: 0.66rem;
+  font-size: 0.62rem;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-faint);
-  font-weight: 650;
-  margin-bottom: 0.35rem;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  margin-bottom: 0.3rem;
 }
-.queue-card p, .pin-card p { margin: 0 0 0.55rem; line-height: 1.55; }
-.pin-card .pin-body { max-height: 9rem; overflow-y: auto; margin-bottom: 0.55rem; }
-.queue-card footer, .pin-card footer { display: flex; gap: 0.4rem; }
-.queue-card footer button { padding: 0.25rem 0.7rem; font-size: 0.76rem; }
+.queue-card p, .pin-card p { margin: 0 0 0.45rem; line-height: 1.5; }
+.pin-card .pin-body { max-height: 9rem; overflow-y: auto; margin-bottom: 0.45rem; }
+.queue-card footer, .pin-card footer { display: flex; gap: 0.35rem; }
+.queue-card footer button { padding: 0.15rem 0.5rem; font-size: 0.72rem; }
 
-/* --- private thread ------------------------------------------------------- */
-
-.fork-turn { font-size: 0.85rem; }
-.fork-role {
-  font-size: 0.66rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-faint);
-  font-weight: 650;
-}
-.fork-body { margin-top: 0.2rem; }
-.fork-body p { margin: 0; line-height: 1.6; }
+.fork-turn { font-size: 0.82rem; }
+.fork-role { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 700; }
+.fork-body { margin-top: 0.15rem; }
+.fork-body p { margin: 0; line-height: 1.55; }
 .fork-turn.is-user .fork-body p {
-  background: rgba(255, 255, 255, 0.07);
-  box-shadow: inset 0 0 0 1px var(--glass-stroke);
-  padding: 0.45rem 0.65rem;
-  border-radius: var(--r-sm);
+  background: var(--paper-sunk);
+  border: var(--hair);
+  padding: 0.35rem 0.5rem;
   white-space: pre-wrap;
-}
-
-/* ===========================================================================
-   Rendered markdown
-   =========================================================================== */
-
-.turn.is-assistant .turn-body { white-space: normal; }
-.markdown { display: contents; }
-.markdown > :first-child { margin-top: 0; }
-.markdown > :last-child { margin-bottom: 0; }
-.markdown p { margin: 0 0 0.85em; line-height: 1.72; }
-.markdown h1, .markdown h2, .markdown h3 {
-  line-height: 1.3;
-  margin: 1.35em 0 0.5em;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-}
-.markdown h1 { font-size: 1.32rem; }
-.markdown h2 { font-size: 1.16rem; }
-.markdown h3 { font-size: 1.03rem; }
-.markdown ul, .markdown ol { margin: 0 0 0.85em; padding-left: 1.35rem; }
-.markdown li { margin-bottom: 0.35em; line-height: 1.68; }
-.markdown li::marker { color: var(--text-faint); }
-.markdown blockquote {
-  margin: 0 0 0.85em;
-  padding: 0.1rem 0 0.1rem 0.95rem;
-  border-left: 2px solid rgba(255, 255, 255, 0.24);
-  color: var(--text-dim);
-}
-.markdown code {
-  background: rgba(255, 255, 255, 0.1);
-  padding: 0.12em 0.38em;
-  border-radius: 5px;
-  font-size: 0.87em;
-  font-family: 'SF Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-}
-.markdown pre {
-  background: rgba(0, 0, 0, 0.42);
-  box-shadow: inset 0 0 0 1px var(--glass-stroke);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  padding: 0.9rem 1.05rem;
-  border-radius: var(--r-md);
-  overflow-x: auto;
-  font-size: 0.84rem;
-  margin: 0 0 0.9em;
-  line-height: 1.6;
-}
-.markdown pre code { background: none; padding: 0; font-size: inherit; }
-.markdown table {
-  border-collapse: collapse;
-  width: 100%;
-  margin: 0 0 0.9em;
-  font-size: 0.88em;
-}
-.markdown th, .markdown td {
-  border: 1px solid var(--glass-stroke);
-  padding: 0.4rem 0.65rem;
-  text-align: left;
-}
-.markdown th { background: rgba(255, 255, 255, 0.06); font-weight: 600; }
-.markdown a { color: var(--text); text-decoration-color: rgba(255, 255, 255, 0.45); }
-.markdown a:hover { text-decoration-color: var(--text); }
-
-.fork-body .markdown { display: block; font-size: 0.85rem; }
-.fork-body .markdown pre { font-size: 0.76rem; }
-.pin-body .markdown { display: block; }
-
-/* ===========================================================================
-   Narrow screens. A phone reads the room and talks on the side; driving is a
-   laptop job, so the rail becomes a bottom sheet rather than a squeezed column.
-   =========================================================================== */
-
-@media (max-width: 880px) {
-  .page { padding: 0.5rem; gap: 0.5rem; }
-  .room-body { flex-direction: column; }
-  .rail { width: 100%; max-height: 44vh; }
-  .thread { padding: 1.1rem 0.9rem 0.5rem; }
-  .turn { margin-bottom: 1.2rem; }
-  .composer { padding: 0.5rem 0.9rem 0.75rem; }
-  .composer textarea { font-size: 16px; } /* stops iOS zooming on focus */
-  .app-header { padding: 0.5rem 0.6rem 0.5rem 0.85rem; }
-  .model-label { display: none; }
-  .mic { padding: 0.45rem 0.7rem; }
-  .mic-requests { margin-left: 0; width: 100%; }
 }
 
 /* ===========================================================================
@@ -881,261 +720,225 @@ input:focus, textarea:focus {
 .model-picker { position: relative; }
 
 .model-trigger {
-  background: rgba(255, 255, 255, 0.06);
-  box-shadow: inset 0 0 0 1px var(--glass-stroke);
-  color: var(--text-dim);
-  font-size: 0.76rem;
-  font-weight: 500;
-  padding: 0.35rem 0.7rem;
+  background: var(--paper);
+  border: var(--hair);
+  box-shadow: none;
+  font-size: 0.72rem;
+  font-weight: 400;
+  padding: 0.15rem 0.5rem;
   display: inline-flex;
   align-items: center;
-  gap: 0.45rem;
+  gap: 0.4rem;
   max-width: 15rem;
 }
-.model-trigger:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.12);
-  color: var(--text);
-  filter: none;
-}
-.model-trigger:disabled { opacity: 0.45; }
-.model-trigger-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.model-trigger svg { flex-shrink: 0; opacity: 0.6; }
+.model-trigger:hover:not(:disabled) { background: var(--accent-soft); }
+.model-trigger-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.model-trigger svg { flex-shrink: 0; }
 
 .model-menu {
   position: absolute;
-  top: calc(100% + 0.5rem);
+  top: calc(100% + 4px);
   right: 0;
-  width: 22rem;
+  width: 21rem;
   max-width: calc(100vw - 2rem);
-  border-radius: var(--r-md);
-  padding: 0.5rem;
+  background: var(--paper);
+  border: var(--line);
+  box-shadow: var(--drop);
+  padding: 0.35rem;
   z-index: 50;
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
-  animation: rise 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+  gap: 0.35rem;
 }
 
-.model-search { font-size: 0.82rem; padding: 0.45rem 0.65rem; }
+.model-search { font-size: 0.8rem; }
 
-.model-list {
-  max-height: 21rem;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 0.1rem;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
-}
-.model-list::-webkit-scrollbar { width: 8px; }
-.model-list::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.13);
-  border-radius: 99px;
-  border: 2px solid transparent;
-  background-clip: content-box;
-}
+.model-list { max-height: 20rem; overflow-y: auto; display: flex; flex-direction: column; }
 
 .model-option {
   background: transparent;
+  border: none;
   box-shadow: none;
-  border-radius: var(--r-sm);
-  padding: 0.45rem 0.6rem;
+  padding: 0.3rem 0.4rem;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 0.1rem;
+  gap: 0.05rem;
   text-align: left;
-  color: var(--text-dim);
+  border-bottom: 1px dotted var(--ink-faint);
 }
-.model-option:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--text);
-  transform: none;
-  filter: none;
-}
-.model-option.is-current {
-  background: rgba(255, 255, 255, 0.13);
-  color: var(--text);
-  box-shadow: inset 0 0 0 1px var(--glass-stroke);
-}
+.model-option:active { transform: none; }
+.model-option:hover:not(:disabled) { background: var(--accent-soft); }
+.model-option.is-current { background: var(--ink); color: var(--paper); }
+.model-option.is-current .model-option-meta { color: rgba(255, 255, 255, 0.7); }
 .model-option-name {
-  font-size: 0.82rem;
-  font-weight: 550;
+  font-size: 0.8rem;
+  font-weight: 700;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .model-option-meta {
-  font-size: 0.68rem;
-  color: var(--text-faint);
-  font-variant-numeric: tabular-nums;
-}
-
-@media (max-width: 880px) {
-  .model-picker { display: none; }
+  font-family: 'Space Mono', monospace;
+  font-size: 0.65rem;
+  color: var(--ink-soft);
 }
 
 /* ===========================================================================
    Sprites
-   ---------------------------------------------------------------------------
-   One drawing per creature; every state below is motion applied to it. Keeping
-   the animation in CSS means it interpolates rather than stepping, and it costs
-   no extra pixel data.
    =========================================================================== */
 
 .sprite {
   display: block;
   image-rendering: pixelated;
   transform-origin: 50% 100%;
-  /* Grounds the creature so it reads as sitting on the surface. */
-  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.45));
 }
-
-.sprite.is-idle { animation: sprite-bob 2.6s ease-in-out infinite; }
-.sprite.is-typing { animation: sprite-type 0.5s ease-in-out infinite; }
-.sprite.is-talking { animation: sprite-talk 1.5s ease-in-out infinite; }
-.sprite.is-thinking { animation: sprite-think 1.1s ease-in-out infinite; }
+.sprite.is-idle { animation: sprite-bob 2.6s steps(2, end) infinite; }
+.sprite.is-typing { animation: sprite-type 0.42s steps(2, end) infinite; }
+.sprite.is-talking { animation: sprite-talk 0.9s steps(2, end) infinite; }
+.sprite.is-thinking { animation: sprite-think 0.8s steps(2, end) infinite; }
 .sprite.is-still { animation: none; }
 
+/* Stepped rather than eased: pixel art that slides between positions stops
+   looking like pixel art. */
 @keyframes sprite-bob {
   0%, 100% { transform: translateY(0); }
-  50%      { transform: translateY(-1.5px); }
+  50%      { transform: translateY(-2px); }
 }
-/* Leaning in, the way someone hunches over a keyboard. */
 @keyframes sprite-type {
-  0%, 100% { transform: translateY(0) rotate(-3deg); }
-  50%      { transform: translateY(-1px) rotate(3deg); }
+  0%, 100% { transform: translate(-1px, 0); }
+  50%      { transform: translate(1px, -1px); }
 }
-/* A squash and stretch, so the holder looks like they are speaking. */
 @keyframes sprite-talk {
-  0%, 100% { transform: translateY(0) scaleY(1); }
-  40%      { transform: translateY(-2px) scaleY(1.06); }
-  70%      { transform: translateY(0) scaleY(0.97); }
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-3px); }
 }
 @keyframes sprite-think {
-  0%, 100% { transform: translateY(0) scale(1); opacity: 0.85; }
-  50%      { transform: translateY(-2px) scale(1.05); opacity: 1; }
+  0%, 100% { transform: translateY(0) scale(1); }
+  50%      { transform: translateY(-2px) scale(1.08); }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .sprite { animation: none !important; }
-}
-
-/* --- the picker ----------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) { .sprite { animation: none !important; } }
 
 .sprite-picker { width: 100%; }
-.sprite-grid {
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 0.3rem;
-}
+.sprite-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 0; }
 
 .sprite-choice {
-  background: rgba(255, 255, 255, 0.04);
-  box-shadow: inset 0 0 0 1px transparent;
-  border-radius: var(--r-sm);
-  padding: 0.35rem;
+  background: var(--paper);
+  border: var(--hair);
+  box-shadow: none;
+  padding: 0.3rem;
   display: grid;
   place-items: center;
   position: relative;
-  transition: background 0.14s ease, transform 0.14s cubic-bezier(0.22, 1, 0.36, 1);
+  margin: -1px 0 0 -1px;
 }
-.sprite-choice:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.1);
-  transform: translateY(-2px);
-  filter: none;
+.sprite-choice:hover:not(:disabled) { background: var(--accent-soft); }
+.sprite-choice:active { transform: none; }
+.sprite-choice.is-chosen,
+.sprite-choice.is-chosen:hover:not(:disabled) {
+  background: var(--ink);
+  border-color: var(--ink);
+  z-index: 1;
 }
-.sprite-choice.is-chosen {
-  background: rgba(255, 255, 255, 0.15);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
-}
-/* Already in the room: discouraged, never blocked. */
 .sprite-choice.is-taken::after {
   content: '';
   position: absolute;
-  top: 3px; right: 3px;
-  width: 5px; height: 5px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.5);
+  top: 2px; right: 2px;
+  width: 4px; height: 4px;
+  background: var(--accent);
 }
-.sprite-choice.is-taken .sprite { opacity: 0.45; }
+.sprite-choice.is-taken .sprite { opacity: 0.4; }
 .sprite-choice.is-taken.is-chosen .sprite { opacity: 1; }
 
-/* --- the roster ----------------------------------------------------------- */
+/* ===========================================================================
+   Rendered markdown
+   =========================================================================== */
 
-.roster { display: flex; align-items: flex-end; gap: 0.15rem; }
+.turn.is-assistant .turn-body { white-space: normal; }
+.markdown { display: contents; }
+.markdown > :first-child { margin-top: 0; }
+.markdown > :last-child { margin-bottom: 0; }
+.markdown p { margin: 0 0 0.8em; line-height: 1.62; }
+.markdown h1, .markdown h2, .markdown h3 {
+  line-height: 1.25;
+  margin: 1.2em 0 0.45em;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.markdown h1 { font-size: 1.25rem; }
+.markdown h2 { font-size: 1.1rem; }
+.markdown h3 { font-size: 1rem; }
+.markdown ul, .markdown ol { margin: 0 0 0.8em; padding-left: 1.3rem; }
+.markdown li { margin-bottom: 0.25em; line-height: 1.6; }
+.markdown blockquote {
+  margin: 0 0 0.8em;
+  padding: 0.1rem 0 0.1rem 0.8rem;
+  border-left: 3px solid var(--ink);
+  color: var(--ink-soft);
+}
+.markdown code {
+  font-family: 'Space Mono', monospace;
+  background: var(--paper-sunk);
+  border: var(--hair);
+  padding: 0 0.25em;
+  font-size: 0.84em;
+}
+.markdown pre {
+  font-family: 'Space Mono', monospace;
+  background: var(--ink);
+  color: var(--paper);
+  padding: 0.7rem 0.85rem;
+  overflow-x: auto;
+  font-size: 0.78rem;
+  margin: 0 0 0.8em;
+  line-height: 1.5;
+  border: var(--line);
+  box-shadow: var(--drop-sm);
+}
+.markdown pre code { background: none; border: none; padding: 0; font-size: inherit; }
+.markdown table { border-collapse: collapse; width: 100%; margin: 0 0 0.8em; font-size: 0.85em; }
+.markdown th, .markdown td { border: var(--hair); padding: 0.3rem 0.5rem; text-align: left; }
+.markdown th { background: var(--paper-sunk); font-weight: 700; }
+.markdown a { color: var(--ink); text-decoration-thickness: 2px; text-underline-offset: 2px; }
+.markdown a:hover { background: var(--accent-soft); }
 
-.roster-slot {
-  position: relative;
-  display: grid;
-  place-items: end center;
-  padding: 0 0.15rem 0.1rem;
-  border-radius: var(--r-sm);
-  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), background 0.22s ease;
-}
-.roster-slot.is-holding {
-  background: rgba(255, 255, 255, 0.08);
-  box-shadow: inset 0 0 0 1px var(--glass-stroke), 0 0 16px -6px var(--member, #fff);
-  transform: translateY(-2px);
-}
-/* The person's own colour still identifies them, now as a base rather than a
-   disc, since the sprite carries the identity. */
-.roster-slot.is-holding::after {
-  content: '';
-  position: absolute;
-  bottom: 0; left: 18%; right: 18%;
-  height: 2px;
-  border-radius: 2px;
-  background: var(--member, #fff);
-}
-.roster-slot.is-ai { margin-left: 0.4rem; opacity: 0.85; }
+.fork-body .markdown { display: block; font-size: 0.82rem; }
+.pin-body .markdown { display: block; }
 
-/* The mic itself, so holding it is visible and not just stated. */
-.mic-glyph {
-  position: absolute;
-  right: -2px;
-  top: 2px;
-  width: 5px;
-  height: 9px;
-  border-radius: 3px;
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 0 8px rgba(255, 255, 255, 0.55);
-  animation: mic-in 0.3s cubic-bezier(0.22, 1, 0.36, 1);
-}
-.mic-glyph::after {
-  content: '';
-  position: absolute;
-  left: 1px; bottom: -4px;
-  width: 3px; height: 4px;
-  background: rgba(255, 255, 255, 0.55);
-}
-@keyframes mic-in {
-  from { opacity: 0; transform: translate(-10px, 4px) scale(0.6); }
-  to   { opacity: 1; transform: none; }
-}
-
-/* --- typing indicator ----------------------------------------------------- */
-
-.composer-typing {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  font-size: 0.72rem;
-  color: var(--text-dim);
-  min-height: 1.2rem;
-}
-
-/* --- sprites in the thread and side chat ---------------------------------- */
-
-.turn header .sprite { margin-right: 0.1rem; }
-.mic-request .sprite { margin-right: 0.1rem; }
+/* ===========================================================================
+   Narrow screens
+   =========================================================================== */
 
 @media (max-width: 880px) {
-  .sprite-grid { grid-template-columns: repeat(6, 1fr); }
-  .roster-slot { padding: 0 0.05rem 0.1rem; }
+  .page { padding: 0.4rem; gap: 0.4rem; }
+  .room-body { flex-direction: column; }
+  .rail { width: 100%; max-height: 44vh; }
+  .thread { padding: 0.8rem 0.7rem 0.4rem; }
+  .turn { margin-bottom: 1rem; }
+  .composer { padding: 0.5rem 0.7rem 0.6rem; }
+  .composer textarea { font-size: 16px; }
+  .model-picker { display: none; }
+  .brand { border-right: none; padding-right: 0; }
+  .mic { padding: 0.3rem 0.5rem 0; }
 }
+
+/* Leftovers from the rewrite: the model name when you cannot change it, and the
+   side chat's hover-revealed actions. */
+
+.model-label {
+  font-family: 'Space Mono', monospace;
+  font-size: 0.7rem;
+  color: var(--ink-soft);
+  border: var(--hair);
+  padding: 0.15rem 0.5rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 12rem;
+}
+
+.side-actions { opacity: 0; transition: opacity 0.1s linear; margin-left: auto; }
+.side-line:hover .side-actions,
+.side-actions:focus-within { opacity: 1; }

@@ -58,7 +58,7 @@ function JoinForm({ code, onJoined }: { code: string; onJoined: (m: JoinResult) 
 
   return (
     <div className="landing">
-      <form className="landing-card glass glass-strong" onSubmit={submit}>
+      <form className="landing-card" onSubmit={submit}>
         <h1>Join {code}</h1>
         <label>
           Your name
@@ -113,7 +113,7 @@ function RoomInterior({ code, member }: { code: string; member: JoinResult }) {
   if (room.ended) {
     return (
       <div className="landing">
-        <div className="landing-card glass glass-strong">
+        <div className="landing-card">
           <h1>{room.ended === 'room-gone' ? 'This room has ended' : 'You are not in this room'}</h1>
           <p className="muted">
             {room.ended === 'room-gone'
@@ -156,7 +156,7 @@ function RoomInterior({ code, member }: { code: string; member: JoinResult }) {
 
   return (
     <div className="page">
-      <header className="app-header glass">
+      <header className="app-header">
         <div className="app-header-left">
           <span className="brand">Coverse</span>
           <button type="button" className="room-code" onClick={copyLink} title="Copy the link">
@@ -187,6 +187,15 @@ function RoomInterior({ code, member }: { code: string; member: JoinResult }) {
 
       <div className="room-body">
         <main className="room-main">
+          <div className="title-bar">
+            <span className="title-bar-box" aria-hidden="true" />
+            <span className="title-bar-spacer" />
+            <span className="title-bar-label">
+              {room.messages.length > 0 ? `${code} · ${room.messages.length} messages` : code}
+            </span>
+            <span className="title-bar-spacer" />
+          </div>
+
           <Thread
             messages={room.messages}
             pins={room.pins}

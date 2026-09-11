@@ -278,7 +278,7 @@ export const SPRITES: SpriteDef[] = [
 export const ASSISTANT_SPRITE: SpriteDef = {
   id: 'assistant',
   name: 'Assistant',
-  palette: ['rgba(255,255,255,0.22)', '#ffffff', 'rgba(255,255,255,0.55)'],
+  palette: ['#16150f', '#fbfaf7', '#55524a'],
   rows: [
     '..............',
     '.....0000.....',

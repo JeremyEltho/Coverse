@@ -40,7 +40,7 @@ export function MicControl({
   const roster = present.length > 0 ? present : members.slice(0, 1)
 
   return (
-    <div className="mic glass">
+    <div className="mic">
       <div className="mic-presence">
         <span className={`dot ${connected ? 'is-online' : 'is-offline'}`} />
 

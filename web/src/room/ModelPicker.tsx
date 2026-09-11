@@ -105,7 +105,7 @@ export function ModelPicker({ current, isDriver, disabled, onChoose }: ModelPick
       </button>
 
       {open ? (
-        <div className="model-menu glass glass-strong" role="listbox">
+        <div className="model-menu" role="listbox">
           <input
             className="model-search"
             value={query}

@@ -46,7 +46,7 @@ export function Composer({
 
   return (
     <div className="composer">
-      <div className="composer-shell glass glass-strong">
+      <div className="composer-shell">
         <textarea
           ref={ref}
           value={value}

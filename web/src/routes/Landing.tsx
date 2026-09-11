@@ -32,7 +32,7 @@ export function Landing() {
 
   return (
     <div className="landing">
-      <div className="landing-card glass glass-strong">
+      <div className="landing-card">
         <h1>Coverse</h1>
         <p className="muted">
           One assistant, several people. Whoever holds the mic talks to it, everyone

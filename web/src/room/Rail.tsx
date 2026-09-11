@@ -42,7 +42,7 @@ export function Rail(props: RailProps) {
   }
 
   return (
-    <aside className="rail glass">
+    <aside className="rail">
       <nav className="rail-tabs" role="tablist">
         {TABS.map((entry) => (
           <button
