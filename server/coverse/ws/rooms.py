@@ -94,6 +94,7 @@ class Room:
         self.empty_since: float | None = time.time()
 
         self._settings = get_settings()
+        self.state.set_model(self._settings.resolved_model)
         self._current_origin: str | None = None
         self._driver_grace: asyncio.Task[None] | None = None
         self._subscription = self.state.doc.observe(self._on_update)

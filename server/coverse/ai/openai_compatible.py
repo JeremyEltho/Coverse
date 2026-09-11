@@ -12,7 +12,7 @@ from typing import Any
 
 import httpx
 
-from .base import Delta, Message, Provider, ProviderError
+from .base import Delta, Message, ModelInfo, Provider, ProviderError
 
 
 class OpenAICompatibleProvider(Provider):
@@ -93,6 +93,42 @@ class OpenAICompatibleProvider(Provider):
                 f"{self.name} request failed: {exc}", provider=self.name, retryable=True
             ) from exc
 
+    async def list_models(self) -> list[ModelInfo]:
+        """The provider's catalogue, newest-looking first.
+
+        Pricing comes back as a per-token string, which is unreadable at
+        catalogue scale, so it is converted to price per million tokens here
+        rather than in the UI.
+        """
+        try:
+            response = await self._get_client().get(
+                f"{self.base_url}/models", headers=self._headers()
+            )
+            response.raise_for_status()
+            payload = response.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise ProviderError(
+                f"could not load the model list: {exc}", provider=self.name, retryable=True
+            ) from exc
+
+        models: list[ModelInfo] = []
+        for entry in payload.get("data", []):
+            model_id = entry.get("id")
+            if not model_id:
+                continue
+            pricing = entry.get("pricing") or {}
+            models.append(
+                ModelInfo(
+                    id=str(model_id),
+                    name=str(entry.get("name") or model_id),
+                    context_length=entry.get("context_length"),
+                    prompt_price=_per_million(pricing.get("prompt")),
+                    completion_price=_per_million(pricing.get("completion")),
+                )
+            )
+        models.sort(key=lambda m: m.name.lower())
+        return models
+
     async def health(self) -> tuple[bool, str]:
         try:
             response = await self._get_client().get(
@@ -107,6 +143,21 @@ class OpenAICompatibleProvider(Provider):
     async def aclose(self) -> None:
         if self._client and not self._client.is_closed:
             await self._client.aclose()
+
+
+def _per_million(value: object) -> float | None:
+    """Convert a per-token price to price per million tokens.
+
+    Providers report this as a string of a very small number, which is
+    unreadable at catalogue scale. Anything unparseable becomes None rather
+    than a guess, so the UI can say nothing instead of something wrong.
+    """
+    if not isinstance(value, (str, int, float)):
+        return None
+    try:
+        return round(float(value) * 1_000_000, 4)
+    except (TypeError, ValueError):
+        return None
 
 
 class OpenRouterProvider(OpenAICompatibleProvider):

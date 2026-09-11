@@ -19,6 +19,7 @@ Client to server:
     {"type": "sidechat",    "body": "..."}
     {"type": "promote",     "id": "side_..."}
     {"type": "share_fork",  "question": "...", "answer": "..."}
+    {"type": "set_model",   "model": "...", "name": "..."}   driver only
     {"type": "queue",       "body": "..."}
     {"type": "fork",        "body": "...", "history": [...]}
     {"type": "ping"}
@@ -67,7 +68,7 @@ async def control_socket(websocket: WebSocket, code: str, member: str = Query(de
             "type": "ready",
             "member_id": member,
             "provider": settings.ai_provider,
-            "model": settings.resolved_model,
+            "model": room.state.model or settings.resolved_model,
             "is_driver": room.is_driver(member),
         }
     )
@@ -208,6 +209,20 @@ async def _handle(
             job.cancel()
         return
 
+    if kind == "set_model":
+        # Scoped to the driver for the same reason sending is: it changes what
+        # the room's next answer comes from. Takes effect on the next turn, so
+        # a reply in flight is never half answered by two models.
+        if not room.is_driver(member):
+            await websocket.send_json(
+                {"type": "error", "error": "only the driver can change the model"}
+            )
+            return
+        model_id = str(payload.get("model") or "").strip()
+        if model_id:
+            room.state.set_model(model_id, str(payload.get("name") or ""))
+        return
+
     if kind == "share_fork":
         # Bring a private exchange into the room. This publishes what was already
         # said; it does not ask the model anything, so it costs no turn and needs
@@ -297,6 +312,7 @@ async def _run_reply(room: Room) -> None:
             room=room.state,
             flush_ms=settings.stream_flush_ms,
             roster=room.roster(),
+            model=room.state.model or settings.resolved_model,
         ):
             pass
     except asyncio.CancelledError:
@@ -338,6 +354,7 @@ async def _run_fork(
             question=body,
             asker_name=name,
             history=history,
+            model=room.state.model or get_settings().resolved_model,
         ):
             await websocket.send_json({**event, "job": job_id, "scope": "fork"})
     except asyncio.CancelledError:

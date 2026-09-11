@@ -196,6 +196,31 @@ check('pins export to a markdown file', file !== null, file ? file.suggestedFile
 await alice.page.screenshot({ path: '/tmp/coverse-room-full.png' })
 await cy.page.screenshot({ path: '/tmp/coverse-room-spectator.png' })
 
+// The model picker belongs to whoever has the mic.
+check('the driver gets a model picker', (await bob.page.locator('.model-trigger').count()) === 1)
+check('a spectator sees the model but cannot change it',
+  (await cy.page.locator('.model-trigger').count()) === 0 &&
+    (await cy.page.locator('.model-label').count()) === 1)
+
+await bob.page.click('.model-trigger')
+await bob.page.waitForSelector('.model-menu', { timeout: 10000 })
+const allModels = await bob.page.locator('.model-option').count()
+await bob.page.fill('.model-search', 'mini')
+await sleep(300)
+check('the model list filters as you type',
+  (await bob.page.locator('.model-option').count()) < allModels, `${allModels} total`)
+
+await bob.page.fill('.model-search', 'Large')
+await bob.page.click('.model-option:has-text("Mock Model Large")')
+await sleep(700)
+check('choosing a model updates the driver',
+  (await bob.page.locator('.model-trigger-name').textContent()) === 'Mock Model Large')
+await cy.page.waitForFunction(
+  () => document.querySelector('.model-label')?.textContent === 'Mock Model Large',
+  { timeout: 10000 },
+).then(() => check('and every spectator sees the switch', true))
+ .catch(() => check('and every spectator sees the switch', false))
+
 // A room that is gone must say so. Retrying forever would leave people staring
 // at "reconnecting" for something that is never coming back.
 const ghost = await open('Ghost', 'ZZZZZZ')

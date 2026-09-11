@@ -173,6 +173,22 @@ await sleep(700)
 check('sharing does not trigger a new AI reply',
   bob.messages().length === beforeShare + 2, `${bob.messages().length} messages`)
 
+// The model is shared state, and changing it belongs to the driver for the same
+// reason sending does: it decides what the next answer comes from.
+check('a room starts on the configured model',
+  (bob.control_().get('model') ?? '').length > 0,
+  bob.control_().get('model'))
+
+alice.events.length = 0
+alice.send({ type: 'set_model', model: 'mock-model-large', name: 'Mock Model Large' })
+await waitFor(() => alice.events.some((e) => e.type === 'error'), 'non-driver refused')
+check('a spectator cannot change the model', true)
+
+bob.send({ type: 'set_model', model: 'mock-model-large', name: 'Mock Model Large' })
+await waitFor(() => alice.control_().get('model') === 'mock-model-large', 'model switched')
+check('the driver can change the model, and everyone sees it',
+  alice.control_().get('model_name') === 'Mock Model Large')
+
 // Promoting is a driver action, since it costs a turn.
 alice.events.length = 0
 const sideId = alice.doc.getArray('sidechat').get(0).id

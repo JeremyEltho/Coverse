@@ -32,6 +32,7 @@ export type ControlMessage =
   | { type: 'sidechat'; body: string }
   | { type: 'promote'; id: string }
   | { type: 'share_fork'; question: string; answer: string }
+  | { type: 'set_model'; model: string; name: string }
   | { type: 'queue'; body: string }
   | { type: 'fork'; job: string; body: string; history: { role: string; content: string }[] }
   | { type: 'ping' }

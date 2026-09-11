@@ -36,6 +36,8 @@ CONTROL = "control"
 # control keys
 DRIVER = "driver"
 DRIVER_NAME = "driver_name"
+MODEL = "model"
+MODEL_NAME = "model_name"
 REQUESTS = "requests"
 JOB = "job"
 
@@ -130,6 +132,21 @@ class RoomDoc:
     def withdraw_request(self, member_id: str) -> None:
         with self.doc.transaction():
             self.control[REQUESTS] = [r for r in self._requests() if r.get("id") != member_id]
+
+    # --- model ------------------------------------------------------------------
+
+    @property
+    def model(self) -> str:
+        return str(self.control.get(MODEL) or "")
+
+    @property
+    def model_name(self) -> str:
+        return str(self.control.get(MODEL_NAME) or "")
+
+    def set_model(self, model_id: str, name: str = "") -> None:
+        with self.doc.transaction():
+            self.control[MODEL] = model_id
+            self.control[MODEL_NAME] = name or model_id
 
     @property
     def running_job(self) -> str | None:

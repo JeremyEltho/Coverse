@@ -105,3 +105,25 @@ async def test_delta_batcher_flushes_on_sentence_boundaries():
     assert batcher.add("Hello") is None
     assert batcher.add(" world") is None
     assert batcher.add(". ") == "Hello world. "
+
+
+async def test_the_chosen_model_is_passed_to_the_provider():
+    """Switching the picker has to reach the request, not just the label."""
+    room = RoomDoc()
+    room.add_message(role="user", author="u1", author_name="Alice", body="hi")
+
+    class Recorder(ScriptedProvider):
+        def __init__(self) -> None:
+            super().__init__(["ok"])
+            self.opts: dict = {}
+
+        async def stream(self, messages, **opts):
+            self.opts = opts
+            async for delta in super().stream(messages, **opts):
+                yield delta
+
+    provider = Recorder()
+    await actions.collect(
+        actions.reply(provider=provider, room=room, flush_ms=0, model="some/model-id")
+    )
+    assert provider.opts.get("model") == "some/model-id"

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import httpx
 
-from .base import ProviderError
+from .base import ModelInfo, ProviderError
 from .openai_compatible import OpenAICompatibleProvider
 
 
@@ -44,6 +44,26 @@ class OllamaProvider(OpenAICompatibleProvider):
                 f"Installed: {', '.join(installed) or 'none'}"
             )
         return True, f"ollama ready with {self.model}"
+
+    async def list_models(self) -> list[ModelInfo]:
+        """Only models already pulled. Offering one that is not installed would
+        produce a failure at send time rather than at selection time."""
+        try:
+            response = await self._get_client().get(f"{self.native_base_url}/api/tags")
+            response.raise_for_status()
+            payload = response.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise ProviderError(
+                f"could not reach ollama: {exc}", provider=self.name, retryable=True
+            ) from exc
+
+        models = [
+            ModelInfo(id=str(m["name"]), name=str(m["name"]))
+            for m in payload.get("models", [])
+            if m.get("name")
+        ]
+        models.sort(key=lambda m: m.name.lower())
+        return models
 
     async def ensure_model(self) -> None:
         ok, detail = await self.health()

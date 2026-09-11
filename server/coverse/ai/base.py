@@ -20,6 +20,33 @@ class Message:
 
 
 @dataclass
+class ModelInfo:
+    """One model a provider can be pointed at."""
+
+    id: str
+    name: str
+    context_length: int | None = None
+    # Price per million tokens, when the provider publishes it. None means the
+    # provider does not charge per token (a local model) or did not say.
+    prompt_price: float | None = None
+    completion_price: float | None = None
+
+    @property
+    def is_free(self) -> bool:
+        return (self.prompt_price or 0) == 0 and (self.completion_price or 0) == 0
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "name": self.name,
+            "context_length": self.context_length,
+            "prompt_price": self.prompt_price,
+            "completion_price": self.completion_price,
+            "free": self.is_free,
+        }
+
+
+@dataclass
 class Delta:
     """One chunk of a streamed completion."""
 
@@ -61,6 +88,14 @@ class Provider(ABC):
     async def health(self) -> tuple[bool, str]:
         """Report whether the backend is reachable, for the /health endpoint."""
         return True, "ok"
+
+    async def list_models(self) -> list[ModelInfo]:
+        """Models this backend can be switched to.
+
+        Returning an empty list means "not switchable", which is what the UI
+        uses to decide whether to offer a picker at all.
+        """
+        return []
 
     async def aclose(self) -> None:
         return None

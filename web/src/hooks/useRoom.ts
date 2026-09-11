@@ -56,6 +56,7 @@ export function useRoom(code: string, me: JoinResult) {
   const [pins, setPins] = useState<string[]>([])
   const [driver, setDriver] = useState<string | null>(null)
   const [driverNameRaw, setDriverNameRaw] = useState('')
+  const [model, setModelState] = useState('')
   const [requests, setRequests] = useState<MicRequest[]>([])
   const [error, setError] = useState<string | null>(null)
   const [ended, setEnded] = useState<FatalReason | null>(null)
@@ -84,6 +85,7 @@ export function useRoom(code: string, me: JoinResult) {
     const readControl = () => {
       setDriver((instance.control.get('driver') as string) || null)
       setDriverNameRaw((instance.control.get('driver_name') as string) || '')
+      setModelState((instance.control.get('model') as string) || '')
       setRequests(((instance.control.get('requests') as MicRequest[]) ?? []).slice())
     }
 
@@ -184,6 +186,10 @@ export function useRoom(code: string, me: JoinResult) {
   }, [])
 
   const stop = useCallback(() => controlRef.current?.send({ type: 'stop' }), [])
+
+  const chooseModel = useCallback((id: string, name: string) => {
+    controlRef.current?.send({ type: 'set_model', model: id, name })
+  }, [])
   const requestMic = useCallback(() => controlRef.current?.send({ type: 'request_mic' }), [])
   const withdrawRequest = useCallback(
     () => controlRef.current?.send({ type: 'withdraw_request' }),
@@ -289,6 +295,8 @@ export function useRoom(code: string, me: JoinResult) {
     streaming,
     error,
     modelLabel,
+    model,
+    chooseModel,
     forkTurns,
     forkBusy,
     send,

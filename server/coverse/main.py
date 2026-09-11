@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .ai.registry import reset_provider
-from .api import health, rooms
+from .api import health, models, rooms
 from .config import get_settings
 from .ws import chat, sync
 from .ws.rooms import registry
@@ -50,6 +50,7 @@ def create_app() -> FastAPI:
 
     app.include_router(health.router)
     app.include_router(rooms.router)
+    app.include_router(models.router)
     app.include_router(sync.router)
     app.include_router(chat.router)
     return app

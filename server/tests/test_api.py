@@ -85,3 +85,33 @@ def test_a_full_room_turns_people_away(client, monkeypatch):
 def test_a_blank_name_is_rejected(client):
     code = client.post("/api/rooms", json={}).json()["code"]
     assert client.post(f"/api/rooms/{code}/join", json={"name": ""}).status_code == 422
+
+
+def test_the_model_catalogue_is_listed(client):
+    body = client.get("/api/models").json()
+    assert body["provider"] == "mock"
+    assert body["default"] == "mock-model"
+    assert body["error"] is None
+    assert {m["id"] for m in body["models"]} >= {"mock-model", "mock-model-large"}
+
+
+def test_the_catalogue_reports_pricing_per_million_tokens(client):
+    models = {m["id"]: m for m in client.get("/api/models").json()["models"]}
+    assert models["mock-model"]["free"] is True
+    assert models["mock-model-large"]["free"] is False
+    assert models["mock-model-large"]["prompt_price"] == 1.5
+
+
+def test_a_provider_that_cannot_reach_its_catalogue_does_not_break_the_page(client, monkeypatch):
+    """The room still works on the configured model, so this is not fatal."""
+    from coverse.ai.base import ProviderError
+    from coverse.ai.registry import get_provider
+
+    async def boom():
+        raise ProviderError("catalogue unreachable")
+
+    monkeypatch.setattr(get_provider(), "list_models", boom)
+
+    body = client.get("/api/models").json()
+    assert body["models"] == []
+    assert "unreachable" in body["error"]

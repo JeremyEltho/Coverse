@@ -6,6 +6,7 @@ import { Thread } from '../room/Thread'
 import { Composer } from '../room/Composer'
 import { MicControl } from '../room/MicControl'
 import { Rail } from '../room/Rail'
+import { ModelPicker } from '../room/ModelPicker'
 
 export function Room() {
   const { code = '' } = useParams()
@@ -148,7 +149,12 @@ function RoomInterior({ code, member }: { code: string; member: JoinResult }) {
             <span>{copied ? 'copied' : 'copy link'}</span>
           </button>
         </div>
-        <span className="model-label">{room.modelLabel}</span>
+        <ModelPicker
+          current={room.model}
+          isDriver={room.isDriver}
+          disabled={room.streaming}
+          onChoose={room.chooseModel}
+        />
       </header>
 
       <MicControl

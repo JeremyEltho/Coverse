@@ -13,7 +13,7 @@ import re
 from collections.abc import AsyncIterator
 from typing import Any
 
-from .base import Delta, Message, Provider, ProviderError
+from .base import Delta, Message, ModelInfo, Provider, ProviderError
 
 _LOREM = (
     "Collaborative editing works because every change is expressed as an operation "
@@ -79,6 +79,14 @@ class MockProvider(Provider):
 
     async def health(self) -> tuple[bool, str]:
         return True, "mock provider is always available"
+
+    async def list_models(self) -> list[ModelInfo]:
+        """Fake catalogue, so the picker can be built and tested without keys."""
+        return [
+            ModelInfo("mock-model", "Mock Model", 128_000, 0.0, 0.0),
+            ModelInfo("mock-model-large", "Mock Model Large", 200_000, 1.5, 4.0),
+            ModelInfo("mock-model-mini", "Mock Model Mini", 32_000, 0.1, 0.3),
+        ]
 
 
 def _tokenize(text: str) -> list[str]:

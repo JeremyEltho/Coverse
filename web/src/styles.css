@@ -362,6 +362,9 @@ input:focus, textarea:focus {
   padding: 0.55rem 0.75rem 0.55rem 1.1rem;
   border-radius: var(--r-lg);
   flex-shrink: 0;
+  /* Above the panes below it, so anything the header opens is not painted
+     under the rail and cannot have its clicks swallowed by it. */
+  z-index: 30;
 }
 .app-header-left { display: flex; align-items: center; gap: 1rem; }
 
@@ -869,4 +872,110 @@ input:focus, textarea:focus {
   .model-label { display: none; }
   .mic { padding: 0.45rem 0.7rem; }
   .mic-requests { margin-left: 0; width: 100%; }
+}
+
+/* ===========================================================================
+   Model picker
+   =========================================================================== */
+
+.model-picker { position: relative; }
+
+.model-trigger {
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 0 0 1px var(--glass-stroke);
+  color: var(--text-dim);
+  font-size: 0.76rem;
+  font-weight: 500;
+  padding: 0.35rem 0.7rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  max-width: 15rem;
+}
+.model-trigger:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text);
+  filter: none;
+}
+.model-trigger:disabled { opacity: 0.45; }
+.model-trigger-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.model-trigger svg { flex-shrink: 0; opacity: 0.6; }
+
+.model-menu {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  width: 22rem;
+  max-width: calc(100vw - 2rem);
+  border-radius: var(--r-md);
+  padding: 0.5rem;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  animation: rise 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.model-search { font-size: 0.82rem; padding: 0.45rem 0.65rem; }
+
+.model-list {
+  max-height: 21rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+}
+.model-list::-webkit-scrollbar { width: 8px; }
+.model-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.13);
+  border-radius: 99px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.model-option {
+  background: transparent;
+  box-shadow: none;
+  border-radius: var(--r-sm);
+  padding: 0.45rem 0.6rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  text-align: left;
+  color: var(--text-dim);
+}
+.model-option:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  transform: none;
+  filter: none;
+}
+.model-option.is-current {
+  background: rgba(255, 255, 255, 0.13);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--glass-stroke);
+}
+.model-option-name {
+  font-size: 0.82rem;
+  font-weight: 550;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.model-option-meta {
+  font-size: 0.68rem;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 880px) {
+  .model-picker { display: none; }
 }

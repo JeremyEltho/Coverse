@@ -135,3 +135,15 @@ def test_an_ordinary_message_is_not_marked_shared():
     room = RoomDoc()
     _, entry = room.add_message(role="user", author="u1", author_name="Alice", body="hi")
     assert entry["shared"] is False
+
+
+def test_the_chosen_model_is_shared_room_state():
+    """One conversation means one model, and everyone should see which."""
+    room = RoomDoc()
+    room.set_model("meta-llama/llama-3.3-70b-instruct", "Llama 3.3 70B")
+    assert room.model == "meta-llama/llama-3.3-70b-instruct"
+    assert room.model_name == "Llama 3.3 70B"
+
+    other = RoomDoc()
+    other.apply_update(room.encode_update())
+    assert other.model_name == "Llama 3.3 70B"

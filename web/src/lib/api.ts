@@ -1,5 +1,5 @@
 import { apiUrl } from './origin'
-import type { Member } from './types'
+import type { Member, ModelCatalogue } from './types'
 
 async function request<T>(path: string, body?: unknown): Promise<T> {
   const response = await fetch(apiUrl(path), {
@@ -37,6 +37,8 @@ export const api = {
     request<{ code: string; needs_password: boolean }>('/api/rooms', { password }),
 
   describeRoom: (code: string) => request<RoomInfo>(`/api/rooms/${code}`),
+
+  listModels: () => request<ModelCatalogue>('/api/models'),
 
   joinRoom: (code: string, name: string, password: string) =>
     request<JoinResult>(`/api/rooms/${code}/join`, { name, password }),

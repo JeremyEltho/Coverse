@@ -52,4 +52,20 @@ export interface Peer {
   isAI?: boolean
 }
 
+export interface ModelInfo {
+  id: string
+  name: string
+  context_length: number | null
+  prompt_price: number | null
+  completion_price: number | null
+  free: boolean
+}
+
+export interface ModelCatalogue {
+  provider: string
+  default: string
+  models: ModelInfo[]
+  error: string | null
+}
+
 export type RailTab = 'chat' | 'queue' | 'pins' | 'fork'
