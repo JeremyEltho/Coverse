@@ -36,10 +36,25 @@ export type ControlMessage =
   | { type: 'ping' }
 
 type Listener = (event: ControlEvent) => void
+type FatalListener = (reason: FatalReason) => void
+
+/**
+ * Why a socket stopped for good.
+ *
+ * The server closes with these rather than dropping the connection, so the
+ * difference between "the network blinked" and "this room no longer exists" is
+ * knowable. Retrying the second one forever would leave people staring at
+ * "reconnecting" for a room that is never coming back.
+ */
+export type FatalReason = 'room-gone' | 'not-a-member'
+
+const WS_UNAUTHORIZED = 4401
+const WS_NOT_FOUND = 4404
 
 export class ControlSocket {
   private socket: WebSocket | null = null
   private listeners = new Set<Listener>()
+  private fatalListeners = new Set<FatalListener>()
   private pending: string[] = []
   private closed = false
   private attempt = 0
@@ -75,8 +90,17 @@ export class ControlSocket {
       for (const listener of this.listeners) listener(parsed)
     }
 
-    socket.onclose = () => {
+    socket.onclose = (event) => {
       if (this.closed) return
+
+      if (event.code === WS_NOT_FOUND || event.code === WS_UNAUTHORIZED) {
+        this.closed = true
+        const reason: FatalReason =
+          event.code === WS_NOT_FOUND ? 'room-gone' : 'not-a-member'
+        for (const listener of this.fatalListeners) listener(reason)
+        return
+      }
+
       const delay = Math.min(1000 * 2 ** this.attempt, 15000)
       this.attempt += 1
       this.timer = window.setTimeout(() => this.open(), delay)
@@ -90,6 +114,11 @@ export class ControlSocket {
     return () => this.listeners.delete(listener)
   }
 
+  onFatal(listener: FatalListener): () => void {
+    this.fatalListeners.add(listener)
+    return () => this.fatalListeners.delete(listener)
+  }
+
   send(message: ControlMessage): void {
     const payload = JSON.stringify(message)
     if (this.socket?.readyState === WebSocket.OPEN) this.socket.send(payload)
@@ -100,6 +129,7 @@ export class ControlSocket {
     this.closed = true
     if (this.timer) window.clearTimeout(this.timer)
     this.listeners.clear()
+    this.fatalListeners.clear()
     this.socket?.close()
   }
 }

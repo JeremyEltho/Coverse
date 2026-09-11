@@ -21,11 +21,16 @@ export interface RoomSession {
   destroy: () => void
 }
 
+/** Close codes the server uses to say "stop trying", mirroring HTTP 401 and 404. */
+const WS_UNAUTHORIZED = 4401
+const WS_NOT_FOUND = 4404
+
 export function connect(
   code: string,
   memberId: string,
   name: string,
   color: string,
+  onFatal?: (reason: 'room-gone' | 'not-a-member') => void,
 ): RoomSession {
   const doc = new Y.Doc()
 
@@ -35,6 +40,17 @@ export function connect(
   })
 
   provider.awareness.setLocalStateField('user', { name, color, memberId })
+
+  // y-websocket reconnects on any close, which is right for a network blip and
+  // wrong for a room that no longer exists.
+  provider.on('connection-close', (event: CloseEvent | null) => {
+    if (!event) return
+    if (event.code === WS_NOT_FOUND || event.code === WS_UNAUTHORIZED) {
+      provider.shouldConnect = false
+      provider.disconnect()
+      onFatal?.(event.code === WS_NOT_FOUND ? 'room-gone' : 'not-a-member')
+    }
+  })
 
   return {
     doc,
