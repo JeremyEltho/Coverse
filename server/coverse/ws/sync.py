@@ -1,8 +1,11 @@
-"""The Yjs sync socket: `/ws/doc/{document_id}`.
+"""The Yjs sync socket: `/ws/room/{code}`.
 
-Pure binary y-websocket protocol -- document updates and awareness, nothing else.
-Application-level messages go on the chat socket instead, which keeps this one a
-faithful Yjs transport that the stock browser client can talk to unmodified.
+Pure binary y-websocket protocol. This one socket carries the entire shared
+state of the room: the thread, the side chat, the queue, the shared draft, pins
+and the baton. Anything a member sees another member do arrives here.
+
+Membership is the only access check. You get a member id by joining over HTTP
+first, which is where the room password is enforced.
 """
 
 from __future__ import annotations
@@ -12,42 +15,36 @@ import uuid
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
-from ..auth import WS_FORBIDDEN, WS_UNAUTHORIZED, user_from_ws_token
-from ..config import get_settings
-from ..db import repo
-from ..db.session import session_scope
-from .rooms import Client, room_manager
+from .rooms import Client, registry
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+WS_UNAUTHORIZED = 4401
+WS_NOT_FOUND = 4404
 
-@router.websocket("/ws/doc/{document_id}")
-async def document_socket(
-    websocket: WebSocket, document_id: str, token: str = Query(default="")
-) -> None:
-    settings = get_settings()
 
-    user = user_from_ws_token(token, settings)
-    if user is None:
-        # Accept first so the client receives the close code rather than a bare
-        # handshake failure, which browsers surface as an opaque error.
+@router.websocket("/ws/room/{code}")
+async def room_socket(websocket: WebSocket, code: str, member: str = Query(default="")) -> None:
+    room = registry.get(code)
+    if room is None:
         await websocket.accept()
-        await websocket.close(code=WS_UNAUTHORIZED, reason="invalid or missing token")
+        await websocket.close(code=WS_NOT_FOUND, reason="no such room")
         return
 
-    if not await _can_access(document_id, user.id, settings.auth_required):
+    if not member or room.get_member(member) is None:
+        # Accept first so the browser receives the close code rather than an
+        # opaque handshake failure.
         await websocket.accept()
-        await websocket.close(code=WS_FORBIDDEN, reason="no access to this document")
+        await websocket.close(code=WS_UNAUTHORIZED, reason="join the room first")
         return
 
     await websocket.accept()
 
-    room = await room_manager.get(document_id)
     client_id = uuid.uuid4().hex
-    client = Client(client_id, websocket.send_bytes, user.id, user.display_name)
+    client = Client(client_id, websocket.send_bytes, member)
     await room.add_client(client)
-    logger.info("client %s joined %s (%d in room)", user.id, document_id, len(room.clients))
+    logger.info("%s joined %s (%d online)", member[:8], room.code, len(room.roster()))
 
     try:
         while True:
@@ -56,30 +53,6 @@ async def document_socket(
     except WebSocketDisconnect:
         pass
     except Exception:
-        logger.exception("sync socket error on %s", document_id)
+        logger.exception("sync socket error in room %s", code)
     finally:
         await room.remove_client(client_id)
-        await room_manager.release(document_id)
-        logger.info("client %s left %s", user.id, document_id)
-
-
-async def _can_access(document_id: str, user_id: str, auth_required: bool) -> bool:
-    """Authorize a document connection.
-
-    When auth is off, connecting to an id that does not exist yet creates it, so
-    opening a fresh URL and typing just works. Creating the row (rather than
-    waving the connection through) keeps the REST endpoints consistent with the
-    socket: the document shows up in listings and its content is fetchable.
-    """
-    async with session_scope() as session:
-        document = await repo.get_document(session, document_id)
-        if document is not None:
-            # Opening someone's link joins the document, rather than bouncing.
-            return await repo.join_via_link(session, document_id, user_id)
-
-        if auth_required:
-            return False
-
-        await repo.create_document_with_id(session, document_id=document_id, owner_id=user_id)
-        logger.info("auto-created document %s for %s", document_id, user_id)
-        return True

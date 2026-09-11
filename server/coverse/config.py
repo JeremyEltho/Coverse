@@ -43,28 +43,18 @@ class Settings(BaseSettings):
 
     mock_delay_ms: int = 25
 
-    # --- database ---
-    # Defaults to a local SQLite file so `uvicorn coverse.main:app` works with
-    # zero setup. Point at Supabase Postgres for the real thing.
-    database_url: str = "sqlite+aiosqlite:///./coverse.db"
-
-    # --- auth (Supabase) ---
-    # When no project URL is configured the server runs in dev-auth mode: the
-    # token is trusted as an opaque user id. Never enable that in production.
-    supabase_url: str = ""
-    supabase_jwt_secret: str = ""
-    supabase_service_role_key: str = ""
-    auth_required: bool = False
+    # --- rooms ---
+    # Rooms live in memory only. These graces stop that from being hostile: a
+    # page refresh must not destroy the room, and a dropped laptop must not
+    # hold the mic forever.
+    room_grace_seconds: float = 120.0
+    driver_grace_seconds: float = 20.0
+    max_members_per_room: int = 12
 
     # --- streaming behaviour ---
     # Committing every token as its own CRDT transaction is a write storm, so
     # deltas are batched on this interval (or at a sentence boundary).
     stream_flush_ms: int = 50
-    # Debounced persistence of Yjs updates.
-    persist_debounce_ms: int = 2000
-    persist_max_wait_ms: int = 10000
-    # Compact the append-only update log once a document exceeds this many rows.
-    compact_after_updates: int = 200
 
     @property
     def cors_origin_list(self) -> list[str]:
@@ -80,10 +70,6 @@ class Settings(BaseSettings):
             "ollama": self.ollama_model,
             "mock": "mock-model",
         }[self.ai_provider]
-
-    @property
-    def is_dev_auth(self) -> bool:
-        return not (self.supabase_jwt_secret or self.supabase_url)
 
 
 @lru_cache

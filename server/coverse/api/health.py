@@ -8,7 +8,7 @@ from fastapi import APIRouter
 
 from ..ai.registry import get_provider
 from ..config import get_settings
-from ..ws.rooms import room_manager
+from ..ws.rooms import registry
 
 router = APIRouter(tags=["health"])
 
@@ -26,6 +26,5 @@ async def health() -> dict[str, Any]:
             "ok": ok,
             "detail": detail,
         },
-        "auth": "dev" if settings.is_dev_auth else "supabase",
-        "rooms": room_manager.active,
+        "rooms": registry.active,
     }

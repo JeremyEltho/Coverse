@@ -10,11 +10,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .ai.registry import reset_provider
-from .api import documents, health
+from .api import health, rooms
 from .config import get_settings
-from .db.session import dispose_db, init_db
 from .ws import chat, sync
-from .ws.rooms import room_manager
+from .ws.rooms import registry
 
 
 @asynccontextmanager
@@ -24,20 +23,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         level=settings.log_level.upper(),
         format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
     )
-    await init_db()
+    await registry.start_reaper()
     logging.getLogger(__name__).info(
-        "Coverse up: provider=%s model=%s auth=%s",
+        "Coverse up: provider=%s model=%s",
         settings.ai_provider,
         settings.resolved_model,
-        "dev" if settings.is_dev_auth else "supabase",
     )
     try:
         yield
     finally:
-        # Flush every room's buffered updates before the process exits.
-        await room_manager.close_all()
+        await registry.close_all()
         await reset_provider()
-        await dispose_db()
 
 
 def create_app() -> FastAPI:
@@ -53,7 +49,7 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(health.router)
-    app.include_router(documents.router)
+    app.include_router(rooms.router)
     app.include_router(sync.router)
     app.include_router(chat.router)
     return app

@@ -1,22 +1,26 @@
-"""The chat and control socket: `/ws/chat/{document_id}`.
+"""The control socket: `/ws/control/{code}`.
 
-Carries JSON: chat turns, AI action requests, streamed tokens for the chat pane,
-and job status. Document mutations caused by these actions do not travel on this
-socket -- they are applied to the room's CRDT replica and reach clients through
-the sync socket.
+Carries the things that are commands rather than state: send this prompt, stop
+that reply, ask for the mic, hand it over, promote a line from the side chat,
+ask a private question.
 
-Client -> server:
-    {"type": "generate", "job": "...", "prompt": "..."}
-    {"type": "canvas",   "job": "...", "prompt": "..."}
-    {"type": "ask",      "job": "...", "prompt": "..."}
-    {"type": "rewrite",  "job": "...", "selection": "...", "instruction": "...",
-                          "relpos": {...}, "anchor": {...}}
-    {"type": "comment",  "job": "...", "selection": "...", "relpos": {...}}
-    {"type": "cancel",   "job": "..."}
+AI output does not travel here. A reply is streamed into the shared document and
+reaches everyone through the sync socket, which is what makes spectating work
+without any fan-out code. The one exception is a private fork, whose deltas come
+back over this socket because they are for one person only.
+
+Client to server:
+    {"type": "send",        "body": "..."}          driver only
+    {"type": "send_queued", "id": "q_..."}          driver only
+    {"type": "stop"}                                anyone
+    {"type": "request_mic"}
+    {"type": "grant_mic",   "member": "..."}        driver only
+    {"type": "release_mic"}                         driver only
+    {"type": "sidechat",    "body": "..."}
+    {"type": "promote",     "id": "side_..."}
+    {"type": "queue",       "body": "..."}
+    {"type": "fork",        "body": "...", "history": [...]}
     {"type": "ping"}
-
-Server -> client:
-    {"type": "status"|"delta"|"suggestion"|"done"|"error", "job": "...", ...}
 """
 
 from __future__ import annotations
@@ -24,265 +28,294 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-import uuid
-from collections.abc import AsyncIterator
 from typing import Any
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
 from ..ai import actions
-from ..ai.base import Message, ProviderError
+from ..ai.base import ProviderError
 from ..ai.registry import get_provider
-from ..auth import WS_FORBIDDEN, WS_UNAUTHORIZED, user_from_ws_token
 from ..config import get_settings
-from ..db import repo
-from ..db.session import session_scope
-from .rooms import Room, room_manager
-from .sync import _can_access
+from .rooms import Room, registry
+from .sync import WS_NOT_FOUND, WS_UNAUTHORIZED
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-ACTION_TYPES = {"generate", "canvas", "ask", "rewrite", "comment"}
 
-
-@router.websocket("/ws/chat/{document_id}")
-async def chat_socket(
-    websocket: WebSocket, document_id: str, token: str = Query(default="")
-) -> None:
-    settings = get_settings()
-
-    user = user_from_ws_token(token, settings)
-    if user is None:
+@router.websocket("/ws/control/{code}")
+async def control_socket(websocket: WebSocket, code: str, member: str = Query(default="")) -> None:
+    room = registry.get(code)
+    if room is None:
         await websocket.accept()
-        await websocket.close(code=WS_UNAUTHORIZED, reason="invalid or missing token")
+        await websocket.close(code=WS_NOT_FOUND, reason="no such room")
         return
 
-    if not await _can_access(document_id, user.id, settings.auth_required):
+    person = room.get_member(member) if member else None
+    if person is None:
         await websocket.accept()
-        await websocket.close(code=WS_FORBIDDEN, reason="no access to this document")
+        await websocket.close(code=WS_UNAUTHORIZED, reason="join the room first")
         return
 
     await websocket.accept()
-    room = await room_manager.get(document_id)
+    room.connect(member)
 
-    # One task per in-flight job, so any of them can be cancelled individually.
-    jobs: dict[str, asyncio.Task[None]] = {}
-
+    settings = get_settings()
     await websocket.send_json(
         {
             "type": "ready",
+            "member_id": member,
             "provider": settings.ai_provider,
             "model": settings.resolved_model,
-            "history": await _load_history(document_id),
+            "is_driver": room.is_driver(member),
         }
     )
+
+    forks: dict[str, asyncio.Task[None]] = {}
 
     try:
         while True:
             payload = await websocket.receive_json()
-            message_type = payload.get("type")
-
-            if message_type == "ping":
-                await websocket.send_json({"type": "pong"})
-                continue
-
-            if message_type == "cancel":
-                job_id = str(payload.get("job", ""))
-                task = jobs.get(job_id)
-                if task and not task.done():
-                    task.cancel()
-                continue
-
-            if message_type not in ACTION_TYPES:
-                await websocket.send_json(
-                    {"type": "error", "error": f"unknown message type: {message_type}"}
-                )
-                continue
-
-            job_id = str(payload.get("job") or uuid.uuid4().hex)
-            task = asyncio.create_task(
-                _run_action(
-                    websocket=websocket,
-                    room=room,
-                    document_id=document_id,
-                    user_id=user.id,
-                    job_id=job_id,
-                    payload=payload,
-                )
+            await _handle(
+                websocket=websocket,
+                room=room,
+                member=member,
+                name=person.name,
+                payload=payload,
+                forks=forks,
             )
-            jobs[job_id] = task
-
-            def _forget(_task: asyncio.Task[None], finished: str = job_id) -> None:
-                jobs.pop(finished, None)
-
-            task.add_done_callback(_forget)
-
     except WebSocketDisconnect:
         pass
     except Exception:
-        logger.exception("chat socket error on %s", document_id)
+        logger.exception("control socket error in room %s", code)
     finally:
-        # Disconnecting cancels whatever the model was doing for this client.
-        for task in jobs.values():
+        for task in forks.values():
             if not task.done():
                 task.cancel()
-        for task in list(jobs.values()):
-            with contextlib.suppress(asyncio.CancelledError, Exception):
-                await task
-        await room_manager.release(document_id)
+        room.disconnect(member)
 
 
-async def _run_action(
+async def _handle(
     *,
     websocket: WebSocket,
     room: Room,
-    document_id: str,
-    user_id: str,
-    job_id: str,
+    member: str,
+    name: str,
     payload: dict[str, Any],
+    forks: dict[str, asyncio.Task[None]],
 ) -> None:
+    kind = payload.get("type")
+
+    if kind == "ping":
+        await websocket.send_json({"type": "pong"})
+        return
+
+    # --- the mic ---------------------------------------------------------------
+
+    if kind == "request_mic":
+        room.state.request_mic(member, name)
+        return
+
+    if kind == "withdraw_request":
+        room.state.withdraw_request(member)
+        return
+
+    if kind == "grant_mic":
+        target = str(payload.get("member") or "")
+        if not room.grant_mic(member, target):
+            await websocket.send_json(
+                {"type": "error", "error": "only the driver can pass the mic"}
+            )
+        return
+
+    if kind == "release_mic":
+        room.release_mic(member)
+        return
+
+    # --- side chat and queue ----------------------------------------------------
+
+    if kind == "sidechat":
+        body = str(payload.get("body") or "").strip()
+        if body:
+            room.state.add_sidechat(author=member, author_name=name, body=body)
+        return
+
+    if kind == "queue":
+        body = str(payload.get("body") or "").strip()
+        if body:
+            room.state.add_to_queue(author=member, author_name=name, body=body)
+        return
+
+    if kind == "promote":
+        # Promoting sends to the model, so it costs a turn and belongs to the
+        # driver. A spectator who wants a line considered puts it in the queue.
+        if not room.is_driver(member):
+            await websocket.send_json(
+                {"type": "error", "error": "only the driver can promote to the thread"}
+            )
+            return
+        # Move a backchannel line into the thread, attributed to whoever said it.
+        target_id = str(payload.get("id") or "")
+        for entry in room.state.sidechat:
+            item = dict(entry)
+            if item.get("id") == target_id:
+                await _send_to_ai(
+                    websocket=websocket,
+                    room=room,
+                    member=member,
+                    author_name=str(item.get("author_name") or name),
+                    body=str(item.get("body") or ""),
+                )
+                return
+        return
+
+    # --- talking to the model ---------------------------------------------------
+
+    if kind in ("send", "send_queued"):
+        if not room.is_driver(member):
+            await websocket.send_json({"type": "error", "error": "you do not have the mic"})
+            return
+
+        if kind == "send_queued":
+            queued = room.state.take_from_queue(str(payload.get("id") or ""))
+            if queued is None:
+                return
+            body = str(queued.get("body") or "")
+            author_name = str(queued.get("author_name") or name)
+        else:
+            body = str(payload.get("body") or "").strip()
+            author_name = name
+            if body:
+                # The draft is shared, so clearing it has to be shared too.
+                room.state.clear_composer()
+
+        if body:
+            await _send_to_ai(
+                websocket=websocket,
+                room=room,
+                member=member,
+                author_name=author_name,
+                body=body,
+            )
+        return
+
+    if kind == "stop":
+        # Anyone can pull the brake: a reply that is visibly going wrong is
+        # wasting everyone's time, not just the driver's.
+        job = _running.get(room.code)
+        if job and not job.done():
+            job.cancel()
+        return
+
+    if kind == "fork":
+        body = str(payload.get("body") or "").strip()
+        if not body:
+            return
+        job_id = str(payload.get("job") or "fork")
+        task = asyncio.create_task(
+            _run_fork(
+                websocket=websocket,
+                room=room,
+                name=name,
+                body=body,
+                history=payload.get("history") or [],
+                job_id=job_id,
+            )
+        )
+        forks[job_id] = task
+
+        def _forget(_task: asyncio.Task[None], finished: str = job_id) -> None:
+            forks.pop(finished, None)
+
+        task.add_done_callback(_forget)
+        return
+
+    await websocket.send_json({"type": "error", "error": f"unknown message: {kind}"})
+
+
+# One AI reply per room at a time. The mic already enforces one sender, and this
+# makes the stop button unambiguous about what it stops.
+_running: dict[str, asyncio.Task[None]] = {}
+
+
+async def _send_to_ai(
+    *,
+    websocket: WebSocket,
+    room: Room,
+    member: str,
+    author_name: str,
+    body: str,
+) -> None:
+    existing = _running.get(room.code)
+    if existing and not existing.done():
+        await websocket.send_json({"type": "error", "error": "the assistant is still replying"})
+        return
+
+    room.state.add_message(role="user", author=member, author_name=author_name, body=body)
+
+    task = asyncio.create_task(_run_reply(room))
+    _running[room.code] = task
+
+
+async def _run_reply(room: Room) -> None:
     settings = get_settings()
     provider = get_provider()
-    action = payload["type"]
-    prompt = str(payload.get("prompt") or "")
-    selection = str(payload.get("selection") or "")
-
-    # Only the actions that write to the document should raise an AI cursor.
-    shows_presence = action in ("generate", "canvas")
+    room.state.set_running_job("reply")
 
     try:
-        if shows_presence:
-            await room.set_ai_presence(True)
-
-        if action in ("generate", "canvas", "ask") and prompt:
-            async with session_scope() as session:
-                await repo.append_chat_message(
-                    session,
-                    document_id=document_id,
-                    user_id=user_id,
-                    role="user",
-                    content=prompt,
-                )
-
-        stream = _build_stream(
-            action=action,
+        await room.set_ai_presence(True)
+        async for _event in actions.reply(
             provider=provider,
-            room=room,
-            payload=payload,
-            prompt=prompt,
-            selection=selection,
-            user_id=user_id,
+            room=room.state,
             flush_ms=settings.stream_flush_ms,
-        )
-
-        collected: list[str] = []
-        async for event in stream:
-            if event.get("type") == "delta":
-                collected.append(event.get("text", ""))
-            await websocket.send_json({**event, "job": job_id})
-
-        answer = "".join(collected).strip()
-        if answer and action in ("generate", "canvas", "ask"):
-            async with session_scope() as session:
-                await repo.append_chat_message(
-                    session,
-                    document_id=document_id,
-                    user_id=user_id,
-                    role="assistant",
-                    content=answer,
-                    provider=settings.ai_provider,
-                    model=settings.resolved_model,
-                )
-
+            roster=room.roster(),
+        ):
+            pass
     except asyncio.CancelledError:
-        # Whatever was already written stays; that is what interrupting a
-        # collaborator mid-sentence looks like.
-        with contextlib.suppress(Exception):
-            await websocket.send_json({"type": "cancelled", "job": job_id, "action": action})
+        # Whatever was already written stays, which is what stopping a speaker
+        # mid sentence looks like.
         raise
     except ProviderError as exc:
-        logger.warning("provider error on %s: %s", document_id, exc)
-        with contextlib.suppress(Exception):
-            await websocket.send_json(
-                {"type": "error", "job": job_id, "error": str(exc), "retryable": exc.retryable}
-            )
+        logger.warning("provider error in %s: %s", room.code, exc)
+        room.state.add_message(role="system", author="system", author_name="System", body=str(exc))
     except Exception as exc:
-        logger.exception("action %s failed on %s", action, document_id)
+        logger.exception("reply failed in room %s", room.code)
+        room.state.add_message(
+            role="system",
+            author="system",
+            author_name="System",
+            body=f"{type(exc).__name__}: {exc}",
+        )
+    finally:
+        room.state.set_running_job(None)
+        _running.pop(room.code, None)
+        with contextlib.suppress(Exception):
+            await room.set_ai_presence(False)
+
+
+async def _run_fork(
+    *,
+    websocket: WebSocket,
+    room: Room,
+    name: str,
+    body: str,
+    history: list[dict[str, str]],
+    job_id: str,
+) -> None:
+    provider = get_provider()
+    try:
+        async for event in actions.fork_reply(
+            provider=provider,
+            room=room.state,
+            question=body,
+            asker_name=name,
+            history=history,
+        ):
+            await websocket.send_json({**event, "job": job_id, "scope": "fork"})
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
         with contextlib.suppress(Exception):
             await websocket.send_json(
-                {"type": "error", "job": job_id, "error": f"{type(exc).__name__}: {exc}"}
+                {"type": "error", "job": job_id, "scope": "fork", "error": str(exc)}
             )
-    finally:
-        if shows_presence:
-            with contextlib.suppress(Exception):
-                await room.set_ai_presence(False)
-
-
-def _build_stream(
-    *,
-    action: str,
-    provider: Any,
-    room: Room,
-    payload: dict[str, Any],
-    prompt: str,
-    selection: str,
-    user_id: str,
-    flush_ms: int,
-) -> AsyncIterator[dict[str, Any]]:
-    doc = room.doc
-
-    if action == "generate":
-        return actions.generate(
-            provider=provider, doc=doc, instruction=prompt, author=user_id, flush_ms=flush_ms
-        )
-    if action == "canvas":
-        return actions.canvas(
-            provider=provider,
-            doc=doc,
-            instruction=prompt,
-            history=_history_messages(payload),
-            flush_ms=flush_ms,
-        )
-    if action == "ask":
-        return actions.ask(
-            provider=provider, doc=doc, question=prompt, history=_history_messages(payload)
-        )
-    if action == "rewrite":
-        return actions.rewrite(
-            provider=provider,
-            doc=doc,
-            selection=selection,
-            instruction=str(payload.get("instruction") or ""),
-            author=user_id,
-            relpos=payload.get("relpos"),
-            anchor=payload.get("anchor"),
-        )
-    if action == "comment":
-        return actions.comment(
-            provider=provider,
-            doc=doc,
-            selection=selection,
-            author=user_id,
-            relpos=payload.get("relpos"),
-            anchor=payload.get("anchor"),
-        )
-    raise ValueError(f"unsupported action: {action}")
-
-
-def _history_messages(payload: dict[str, Any]) -> list[Message]:
-    """Turn client-supplied conversation history into provider messages."""
-    history = payload.get("history") or []
-    messages: list[Message] = []
-    for entry in history[-20:]:
-        role = entry.get("role")
-        content = entry.get("content")
-        if role in ("user", "assistant") and content:
-            messages.append(Message(role, str(content)))
-    return messages
-
-
-async def _load_history(document_id: str) -> list[dict[str, Any]]:
-    async with session_scope() as session:
-        rows = await repo.load_chat_history(session, document_id)
-        return [{"role": row.role, "content": row.content, "id": row.id} for row in rows]
